@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Notion TODO Manager",
+  "version": "1.0.0",
+  "description": "NotionのTODOデータベースをサイドパネルで管理",
+  "permissions": ["sidePanel", "storage"],
+  "host_permissions": ["https://api.notion.com/*"],
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "action": {
+    "default_title": "Notion TODO Manager"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
+  },
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "../assets/icons/icon16.png",
+    "48": "../assets/icons/icon48.png",
+    "128": "../assets/icons/icon128.png"
+  }
+}
