@@ -1,0 +1,650 @@
+// Notion TODO Manager - サイドパネルロジック
+
+let config = {
+  apiKey: '',
+  databases: [],
+  activeDatabaseId: ''
+};
+let todos = [];
+
+// DOM要素
+const elements = {
+  setupMessage: document.getElementById('setupMessage'),
+  loading: document.getElementById('loading'),
+  errorMessage: document.getElementById('errorMessage'),
+  addTaskForm: document.getElementById('addTaskForm'),
+  todoList: document.getElementById('todoList'),
+  refreshBtn: document.getElementById('refreshBtn'),
+  settingsBtn: document.getElementById('settingsBtn'),
+  openOptionsBtn: document.getElementById('openOptionsBtn'),
+  newTaskInput: document.getElementById('newTaskInput'),
+  addTaskBtn: document.getElementById('addTaskBtn'),
+  dbSelector: document.getElementById('dbSelector')
+};
+
+// 初期化
+async function init() {
+  const result = await loadConfig();
+  config.apiKey = result.apiKey;
+  config.databases = result.databases;
+  
+  if (!config.apiKey || config.databases.length === 0) {
+    showSetupMessage();
+    return;
+  }
+  
+  // セレクターを構築
+  renderDbSelector();
+  
+  // 前回の選択を復元
+  chrome.storage.sync.get(['activeDatabaseId'], async (save) => {
+    const savedId = save.activeDatabaseId;
+    if (savedId && config.databases.find(db => db.id === savedId)) {
+      config.activeDatabaseId = savedId;
+      elements.dbSelector.value = savedId;
+    } else {
+      config.activeDatabaseId = config.databases[0].id;
+      elements.dbSelector.value = config.databases[0].id;
+    }
+    
+    hideSetupMessage();
+    await loadTodos();
+  });
+}
+
+// セレクターUIの描画
+function renderDbSelector() {
+  elements.dbSelector.innerHTML = '';
+  config.databases.forEach(db => {
+    const option = document.createElement('option');
+    option.value = db.id;
+    option.textContent = db.name;
+    elements.dbSelector.appendChild(option);
+  });
+}
+
+// DB切り替えイベント
+elements.dbSelector.addEventListener('change', async (e) => {
+  const newId = e.target.value;
+  config.activeDatabaseId = newId;
+  titlePropertyName = ''; // キャッシュをクリア
+  chrome.storage.sync.set({ activeDatabaseId: newId });
+  await loadTodos();
+});
+
+// 設定を読み込む
+async function loadConfig() {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get(['notionApiKey', 'notionDatabases', 'notionDatabaseId'], (result) => {
+      let databases = result.notionDatabases || [];
+      
+      // 旧バージョンからの移行
+      if (databases.length === 0 && result.notionDatabaseId) {
+        databases = [{ id: result.notionDatabaseId, name: 'デフォルト' }];
+      }
+      
+      resolve({
+        apiKey: (result.notionApiKey || '').trim(),
+        databases: databases
+      });
+    });
+  });
+}
+
+// ヘルパー: 現在のDB IDを取得
+function getActiveDatabaseId() {
+  return config.activeDatabaseId;
+}
+
+// グローバルキャッシュ
+let titlePropertyName = '';
+
+// TODOを読み込む
+async function loadTodos() {
+  if (!getActiveDatabaseId() || getActiveDatabaseId() === '') {
+    console.warn('Database ID is missing. Skipping loadTodos.');
+    return;
+  }
+
+  showLoading();
+  hideError();
+  
+  try {
+    // 1. TODOリストを取得
+    const response = await fetch(`https://api.notion.com/v1/databases/${getActiveDatabaseId()}/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sorts: [
+          {
+            timestamp: 'created_time',
+            direction: 'descending'
+          }
+        ]
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || `API Error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    // 2. タイトルプロパティ名を特定（キャッシュがない場合のみ）
+    if (!titlePropertyName) {
+      const dbResponse = await fetch(`https://api.notion.com/v1/databases/${getActiveDatabaseId()}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Notion-Version': '2022-06-28'
+        }
+      });
+      
+      if (dbResponse.ok) {
+        const dbData = await dbResponse.json();
+        for (const [name, prop] of Object.entries(dbData.properties)) {
+          if (prop.type === 'title') {
+            titlePropertyName = name;
+            break;
+          }
+        }
+      }
+    }
+
+    // 🏆 キャッシュが取れなかった場合のフォールバック
+    const activeTitleKey = titlePropertyName || 'Name';
+
+    // 3. データをフィルタリング（空データ、アーカイブ、完了済みを除外）
+    todos = data.results.filter(page => {
+      // アーカイブ済みは除外
+      if (page.archived) return false;
+      
+      // タイトルが空のページは除外
+      const titleProp = page.properties[activeTitleKey];
+      const hasTitle = titleProp && titleProp.title && titleProp.title.length > 0 && titleProp.title[0].plain_text.trim() !== '';
+      if (!hasTitle) return false;
+
+      // 完了済みタスクは除外
+      return !getTodoStatus(page);
+    });
+    
+    // 4. ソート
+    todos.sort((a, b) => {
+      const aDone = getTodoStatus(a);
+      const bDone = getTodoStatus(b);
+      if (aDone === bDone) return 0;
+      return aDone ? 1 : -1;
+    });
+
+    hideLoading();
+    renderTodos();
+    
+  } catch (error) {
+    hideLoading();
+    console.error('Load Error:', error);
+    showError(`Error: ${error.message}`);
+  }
+}
+
+// TODOを表示
+function renderTodos() {
+  elements.todoList.innerHTML = '';
+  
+  if (todos.length === 0) {
+    elements.todoList.innerHTML = `
+      <div class="empty-state">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 11l3 3L22 4"></path>
+          <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"></path>
+        </svg>
+        <p>タスクがありません</p>
+      </div>
+    `;
+    return;
+  }
+  
+  todos.forEach(todo => {
+    const todoItem = createTodoElement(todo);
+    elements.todoList.appendChild(todoItem);
+  });
+}
+
+// TODO要素を作成
+function createTodoElement(todo) {
+  const div = document.createElement('div');
+  div.className = 'todo-item';
+  div.dataset.id = todo.id;
+  
+  // タイトルを取得
+  const title = getTodoTitle(todo);
+  
+  // 完了状態を取得
+  const isCompleted = getTodoStatus(todo);
+  if (isCompleted) {
+    div.classList.add('completed');
+  }
+  
+  // 期限を取得
+  const dueDate = getTodoDueDate(todo);
+  
+  // タグを取得
+  const tags = getTodoTags(todo);
+  
+  // メタ情報のHTML
+  let metaHtml = '';
+  if (dueDate || tags.length > 0) {
+    metaHtml = '<div class="todo-meta">';
+    
+    if (dueDate) {
+      const isOverdue = new Date(dueDate) < new Date() && !isCompleted;
+      const dueDateClass = isOverdue ? 'due-date overdue' : 'due-date';
+      metaHtml += `<span class="${dueDateClass}">📅 ${formatDate(dueDate)}</span>`;
+    }
+    
+    if (tags.length > 0) {
+      tags.forEach(tag => {
+        metaHtml += `<span class="tag">${tag}</span>`;
+      });
+    }
+    
+    metaHtml += '</div>';
+  }
+  
+  div.innerHTML = `
+    <div class="todo-checkbox">
+      <svg viewBox="0 0 24 24" fill="none">
+        <polyline points="20 6 9 17 4 12"></polyline>
+      </svg>
+    </div>
+    <div class="todo-text">
+      <div class="todo-content" contenteditable="true" spellcheck="false">${escapeHtml(title)}</div>
+      ${metaHtml}
+    </div>
+  `;
+  
+  const checkbox = div.querySelector('.todo-checkbox');
+  const todoContent = div.querySelector('.todo-content');
+
+  // チェックボックスクリックで完了切り替え
+  checkbox.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleTodo(todo.id, !isCompleted);
+  });
+
+  // タイトル編集の保存処理
+  let isEditing = false;
+  todoContent.addEventListener('focus', () => {
+    isEditing = true;
+  });
+
+  todoContent.addEventListener('blur', () => {
+    if (isEditing) {
+      const newTitle = todoContent.textContent.trim();
+      if (newTitle && newTitle !== title) {
+        updateTodoTitle(todo.id, newTitle);
+      } else {
+        todoContent.textContent = title;
+      }
+      isEditing = false;
+    }
+  });
+
+  todoContent.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      todoContent.blur();
+    }
+    if (e.key === 'Escape') {
+      todoContent.textContent = title;
+      todoContent.blur();
+    }
+  });
+  
+  return div;
+}
+
+// TODOのタイトルを更新
+async function updateTodoTitle(todoId, newTitle) {
+  try {
+    // データベース情報を取得してタイトルプロパティ名を判別
+    const dbResponse = await fetch(`https://api.notion.com/v1/databases/${getActiveDatabaseId()}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Notion-Version': '2022-06-28'
+      }
+    });
+
+    if (!dbResponse.ok) throw new Error('DBプロパティの取得に失敗しました');
+    const dbData = await dbResponse.json();
+    
+    let titleKey = '';
+    for (const [name, prop] of Object.entries(dbData.properties)) {
+      if (prop.type === 'title') {
+        titleKey = name;
+        break;
+      }
+    }
+
+    const response = await fetch(`https://api.notion.com/v1/pages/${todoId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        properties: {
+          [titleKey]: {
+            title: [{ text: { content: newTitle } }]
+          }
+        }
+      })
+    });
+
+    if (!response.ok) throw new Error('タイトルの更新に失敗しました');
+    
+    // リロード
+    await loadTodos();
+  } catch (error) {
+    showError(`更新エラー: ${error.message}`);
+    await loadTodos();
+  }
+}
+
+// タイトルを取得
+function getTodoTitle(todo) {
+  // 全プロパティから 'title' 型のものを探す（動的判別）
+  for (const prop of Object.values(todo.properties)) {
+    if (prop.type === 'title' && prop.title && prop.title.length > 0) {
+      return prop.title[0].plain_text;
+    }
+  }
+  
+  return '無題';
+}
+
+// 完了状態を取得（フィルタリング用）
+function getTodoStatus(todo) {
+  // すべてのプロパティをスキャンして状態を探す
+  for (const prop of Object.values(todo.properties)) {
+    // ステータス型（最優先）
+    if (prop.type === 'status' && prop.status) {
+      // 「完了」の場合は表示しない（trueを返す）
+      return prop.status.name === '完了' || prop.status.name === 'Done';
+    }
+    // チェックボックス型
+    if (prop.type === 'checkbox') {
+      return prop.checkbox;
+    }
+  }
+  
+  return false;
+}
+
+// 期限を取得
+function getTodoDueDate(todo) {
+  // すべてのプロパティをスキャンして 'date' 型を探す
+  for (const prop of Object.values(todo.properties)) {
+    if (prop.type === 'date' && prop.date) {
+      return prop.date.start;
+    }
+  }
+  return null;
+}
+
+// タグを取得
+function getTodoTags(todo) {
+  const allTags = [];
+  
+  // すべてのプロパティをスキャン
+  for (const prop of Object.values(todo.properties)) {
+    // マルチセレクト型
+    if (prop.type === 'multi_select' && prop.multi_select) {
+      prop.multi_select.forEach(tag => allTags.push(tag.name));
+    }
+    // セレクト型
+    if (prop.type === 'select' && prop.select) {
+      allTags.push(prop.select.name);
+    }
+  }
+  
+  return allTags;
+}
+
+// 日付をフォーマット
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  
+  // 日付のみを比較するために時刻を0にする
+  const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const tomorrowOnly = new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate());
+  
+  if (dateOnly.getTime() === todayOnly.getTime()) {
+    return '今日';
+  } else if (dateOnly.getTime() === tomorrowOnly.getTime()) {
+    return '明日';
+  } else {
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return `${month}/${day}`;
+  }
+}
+
+// TODOの完了状態を切り替え
+async function toggleTodo(todoId, checked) {
+  try {
+    // まず、このTODOのプロパティ構造を確認
+    const todo = todos.find(t => t.id === todoId);
+    if (!todo) return;
+    
+    // 更新するプロパティを決定
+    let updateProps = {};
+    
+    // ステータス型があるか確認
+    let statusKey = null;
+    let checkboxKey = null;
+    
+    for (const [key, value] of Object.entries(todo.properties)) {
+      if (value.type === 'status') statusKey = key;
+      if (value.type === 'checkbox') checkboxKey = key;
+    }
+    
+    if (statusKey) {
+      // ステータスを「完了」に更新
+      updateProps[statusKey] = {
+        status: { name: checked ? '完了' : '未着手' }
+      };
+    } else if (checkboxKey) {
+      // チェックボックスを更新
+      updateProps[checkboxKey] = {
+        checkbox: checked
+      };
+    } else {
+      showError('ステータスまたはチェックボックス属性が見つかりません');
+      return;
+    }
+    
+    // タスクを完了にする場合のみアニメーション処理
+    if (checked) {
+      // DOM要素を取得
+      const todoElement = document.querySelector(`[data-id="${todoId}"]`);
+      if (todoElement) {
+        // まずcompletedクラスを追加（チェックマークアニメーション）
+        todoElement.classList.add('completed');
+        
+        // 600ms後にフェードアウト開始
+        setTimeout(() => {
+          todoElement.classList.add('fade-out');
+          
+          // アニメーション完了後にDOMから削除（400ms）
+          setTimeout(() => {
+            todoElement.remove();
+          }, 400);
+        }, 600);
+      }
+    }
+    
+    // Notion APIを更新
+    const response = await fetch(`https://api.notion.com/v1/pages/${todoId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        properties: updateProps
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || '更新に失敗しました');
+    }
+    
+    // 未完了に戻す場合はリストを再読み込み
+    if (!checked) {
+      await loadTodos();
+    }
+    
+  } catch (error) {
+    showError(`エラー: ${error.message}`);
+    console.error('Error toggling todo:', error);
+    // エラー時はリストを再読み込み
+    await loadTodos();
+  }
+}
+
+// 新規タスクを追加
+async function addTodo() {
+  const title = elements.newTaskInput.value.trim();
+  if (!title || !getActiveDatabaseId()) return;
+  
+  try {
+    showLoading();
+    
+    // プロパティ情報を取得してタイトルとステータスのキーを特定
+    const dbResponse = await fetch(`https://api.notion.com/v1/databases/${getActiveDatabaseId()}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Notion-Version': '2022-06-28'
+      }
+    });
+
+    if (!dbResponse.ok) throw new Error('データベース情報の取得に失敗しました');
+    const dbData = await dbResponse.json();
+    
+    let activeTitleKey = 'Name';
+    let activeStatusKey = null;
+    
+    for (const [name, prop] of Object.entries(dbData.properties)) {
+      if (prop.type === 'title') activeTitleKey = name;
+      if (prop.type === 'status') activeStatusKey = name;
+    }
+
+    // 更新用のプロパティを構築
+    const properties = {
+      [activeTitleKey]: {
+        title: [{ text: { content: title } }]
+      }
+    };
+
+    // ステータスプロパティがある場合は「未着手」をセット
+    if (activeStatusKey) {
+      properties[activeStatusKey] = {
+        status: { name: '未着手' }
+      };
+    }
+
+    const response = await fetch('https://api.notion.com/v1/pages', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        parent: { database_id: getActiveDatabaseId() },
+        properties: properties
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'タスクの追加に失敗しました');
+    }
+    
+    elements.newTaskInput.value = '';
+    await loadTodos();
+    
+  } catch (error) {
+    hideLoading();
+    showError(`エラー: ${error.message}`);
+    console.error('Error adding todo:', error);
+  }
+}
+
+// UI制御関数
+function showSetupMessage() {
+  elements.setupMessage.style.display = 'block';
+  elements.addTaskForm.style.display = 'none';
+  elements.todoList.style.display = 'none';
+}
+
+function hideSetupMessage() {
+  elements.setupMessage.style.display = 'none';
+  elements.addTaskForm.style.display = 'flex';
+  elements.todoList.style.display = 'block';
+}
+
+function showLoading() {
+  elements.loading.style.display = 'flex';
+}
+
+function hideLoading() {
+  elements.loading.style.display = 'none';
+}
+
+function showError(message) {
+  elements.errorMessage.textContent = message;
+  elements.errorMessage.style.display = 'block';
+}
+
+function hideError() {
+  elements.errorMessage.style.display = 'none';
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// イベントリスナー
+elements.refreshBtn.addEventListener('click', loadTodos);
+elements.settingsBtn.addEventListener('click', () => {
+  chrome.runtime.openOptionsPage();
+});
+elements.openOptionsBtn.addEventListener('click', () => {
+  chrome.runtime.openOptionsPage();
+});
+elements.addTaskBtn.addEventListener('click', addTodo);
+elements.newTaskInput.addEventListener('keypress', (e) => {
+  if (e.key === 'Enter') {
+    addTodo();
+  }
+});
+
+// 初期化実行
+init();
