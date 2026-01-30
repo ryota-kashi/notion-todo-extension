@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const srcDir = path.join(__dirname, 'src');
-const assetsDir = path.join(__dirname, 'assets');
+const assetsIconsDir = path.join(__dirname, 'assets', 'icons');
 const distDir = path.join(__dirname, 'dist');
 
 console.log('🔨 ビルド開始...');
@@ -16,54 +16,36 @@ if (fs.existsSync(distDir)) {
 // distディレクトリを作成
 fs.mkdirSync(distDir, { recursive: true });
 
-// ディレクトリを再帰的にコピー
-function copyDir(src, dest) {
-  fs.mkdirSync(dest, { recursive: true });
-  const entries = fs.readdirSync(src, { withFileTypes: true });
+// srcのファイルをdist直下にコピー
+console.log('📦 src/のファイルをdist/にコピー中...');
+const srcFiles = fs.readdirSync(srcDir);
+for (const file of srcFiles) {
+  const srcPath = path.join(srcDir, file);
+  const destPath = path.join(distDir, file);
+  
+  // ファイルのみコピー(ディレクトリは無視)
+  if (fs.statSync(srcPath).isFile()) {
+    fs.copyFileSync(srcPath, destPath);
+  }
+}
+console.log('✓ src/のコピー完了');
 
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-
-    if (entry.isDirectory()) {
-      copyDir(srcPath, destPath);
-    } else {
+// assets/iconsのファイルをdist/icons/にコピー
+if (fs.existsSync(assetsIconsDir)) {
+  console.log('🎨 assets/icons/のファイルをdist/icons/にコピー中...');
+  const distIconsDir = path.join(distDir, 'icons');
+  fs.mkdirSync(distIconsDir, { recursive: true });
+  
+  const iconFiles = fs.readdirSync(assetsIconsDir);
+  for (const file of iconFiles) {
+    const srcPath = path.join(assetsIconsDir, file);
+    const destPath = path.join(distIconsDir, file);
+    
+    if (fs.statSync(srcPath).isFile()) {
       fs.copyFileSync(srcPath, destPath);
     }
   }
-}
-
-// srcをdistにコピー
-console.log('📦 src/をdist/にコピー中...');
-copyDir(srcDir, distDir);
-console.log('✓ src/のコピー完了');
-
-// assetsのiconsをdist/iconsにコピー
-const distIconsDir = path.join(distDir, 'icons');
-const srcIconsDir = path.join(assetsDir, 'icons');
-
-if (fs.existsSync(srcIconsDir)) {
-  console.log('🎨 assets/icons/をdist/icons/にコピー中...');
-  copyDir(srcIconsDir, distIconsDir);
   console.log('✓ アイコンのコピー完了');
-}
-
-// manifest.jsonのアイコンパスを修正
-const manifestPath = path.join(distDir, 'manifest.json');
-if (fs.existsSync(manifestPath)) {
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-  
-  // アイコンパスを修正
-  if (manifest.icons) {
-    manifest.icons = {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    };
-  }
-  
-  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  console.log('✓ manifest.jsonのパスを修正');
 }
 
 console.log('\n✅ ビルド完了!');
