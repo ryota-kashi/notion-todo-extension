@@ -50,6 +50,22 @@
         <div id="saveMessage" class="save-message" style="display: none;"></div>
       </div>
 
+      <!-- Google Calendar連携 -->
+      <div class="section">
+        <h2>📅 Google Calendar連携</h2>
+        <div class="form-group">
+          <label>認証状態</label>
+          <div id="googleAuthStatus" class="auth-status">未認証</div>
+        </div>
+        <div class="form-group">
+          <button id="googleAuthBtn" class="btn-primary" style="width: auto;">Googleアカウントで認証</button>
+          <button id="googleSignOutBtn" class="btn-secondary" style="display: none; width: auto;">認証解除</button>
+        </div>
+        <p class="description">
+          本日のTODOをGoogle Tasksに追加するには、Googleアカウントの認証が必要です。
+        </p>
+      </div>
+
       <div class="section">
         <div class="instructions">
           <h3>📚 セットアップ手順</h3>
@@ -62,6 +78,25 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <!-- DB編集モーダル -->
+  <div id="editDbModal" class="modal" style="display: none">
+    <div class="modal-content">
+      <h3>データベースを編集</h3>
+      <div class="form-group">
+        <label>データベース名</label>
+        <input type="text" id="editDbName" class="input-field" />
+      </div>
+      <div class="form-group">
+        <label>データベースID</label>
+        <input type="text" id="editDbId" class="input-field" />
+      </div>
+      <div class="modal-buttons">
+        <button id="saveEditDbBtn" class="btn-primary">保存</button>
+        <button id="cancelEditDbBtn" class="btn-secondary">キャンセル</button>
+      </div>
+    </div>
   </div>
 
   <script src="options.js"></script>

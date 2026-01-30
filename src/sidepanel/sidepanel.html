@@ -9,19 +9,15 @@
   <body>
     <div class="container">
       <header>
-        <div class="header-main">
-          <h1>📝 Notion TODO</h1>
-          <div class="db-selector-container">
-            <select id="dbSelector" class="db-select">
-              <option value="">読込中...</option>
-            </select>
-          </div>
-        </div>
+        <h1>📝 Notion TODO</h1>
+        <select id="dbSelector" class="db-select">
+          <option value="">読込中...</option>
+        </select>
         <div class="header-buttons">
           <button id="settingsBtn" class="icon-btn" title="設定">
             <svg
-              width="20"
-              height="20"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -33,8 +29,8 @@
           </button>
           <button id="refreshBtn" class="icon-btn" title="リフレッシュ">
             <svg
-              width="20"
-              height="20"
+              width="18"
+              height="18"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -102,6 +98,13 @@
             <button id="cancelTagBtn" class="btn-secondary">キャンセル</button>
           </div>
         </div>
+      </div>
+
+      <!-- Google Tasks追加ボタン -->
+      <div class="google-tasks-section">
+        <button id="addToGoogleTasksBtn" class="btn-google-tasks">
+          📅 本日のTODOをタスクに追加
+        </button>
       </div>
 
       <footer>

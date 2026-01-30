@@ -7,10 +7,14 @@ const elements = {
   databaseId: document.getElementById('databaseId'),
   addDbBtn: document.getElementById('addDbBtn'),
   dbList: document.getElementById('dbList'),
-  saveMessage: document.getElementById('saveMessage')
+  saveMessage: document.getElementById('saveMessage'),
+  googleAuthStatus: document.getElementById('googleAuthStatus'),
+  googleAuthBtn: document.getElementById('googleAuthBtn'),
+  googleSignOutBtn: document.getElementById('googleSignOutBtn')
 };
 
 let databases = [];
+let editingDbIndex = null;
 
 // 初期化: 保存済みの設定を読み込む
 async function init() {
@@ -34,6 +38,9 @@ async function init() {
     
     renderDbList();
   });
+  
+  // Google認証状態を確認
+  checkGoogleAuth();
 }
 
 // APIキーのみ保存
@@ -111,20 +118,26 @@ function renderDbList() {
     item.className = 'db-item';
     item.innerHTML = `
       <div class="db-info">
-        <span class="db-name">${escapeHtml(db.name)}</span>
-        <span class="db-id">ID: ${db.id.slice(0, 8)}...</span>
+        <strong class="db-name">${escapeHtml(db.name)}</strong>
+        <span class="db-id">${db.id.slice(0, 8)}...</span>
       </div>
-      <button class="delete-btn" data-index="${index}" title="削除">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path>
-        </svg>
-      </button>
+      <div class="db-actions">
+        <button class="btn-edit" data-index="${index}">✏️ 編集</button>
+        <button class="btn-delete" data-index="${index}">🗑️ 削除</button>
+      </div>
     `;
     elements.dbList.appendChild(item);
   });
 
-  // 削除イベントの紐付け
-  document.querySelectorAll('.delete-btn').forEach(btn => {
+  // 編集・削除イベントの紐付け
+  document.querySelectorAll('.btn-edit').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const index = parseInt(e.currentTarget.dataset.index);
+      openEditDbModal(index);
+    });
+  });
+  
+  document.querySelectorAll('.btn-delete').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const index = parseInt(e.currentTarget.dataset.index);
       deleteDb(index);
@@ -146,9 +159,112 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
+// ========== Google認証機能 ==========
+
+// Google認証状態を確認
+async function checkGoogleAuth() {
+  const result = await chrome.storage.sync.get(['googleAccessToken']);
+  const isAuthenticated = !!result.googleAccessToken;
+  
+  if (isAuthenticated) {
+    elements.googleAuthStatus.textContent = '✅ 認証済み';
+    elements.googleAuthStatus.className = 'auth-status authenticated';
+    elements.googleAuthBtn.style.display = 'none';
+    elements.googleSignOutBtn.style.display = 'inline-block';
+  } else {
+    elements.googleAuthStatus.textContent = '❌ 未認証';
+    elements.googleAuthStatus.className = 'auth-status';
+    elements.googleAuthBtn.style.display = 'inline-block';
+    elements.googleSignOutBtn.style.display = 'none';
+  }
+}
+
+// Google認証を実行
+async function authenticateGoogle() {
+  try {
+    const token = await chrome.identity.getAuthToken({ 
+      interactive: true,
+      scopes: ['https://www.googleapis.com/auth/tasks']
+    });
+    await chrome.storage.sync.set({ googleAccessToken: token });
+    showMessage('✓ Google認証に成功しました', 'success');
+    checkGoogleAuth();
+  } catch (error) {
+    showMessage(`認証エラー: ${error.message}`, 'error');
+  }
+}
+
+// 認証解除
+async function signOutGoogle() {
+  try {
+    const result = await chrome.storage.sync.get(['googleAccessToken']);
+    if (result.googleAccessToken) {
+      await chrome.identity.removeCachedAuthToken({ token: result.googleAccessToken });
+    }
+    await chrome.storage.sync.remove(['googleAccessToken']);
+    showMessage('✓ 認証を解除しました', 'success');
+    checkGoogleAuth();
+  } catch (error) {
+    showMessage(`エラー: ${error.message}`, 'error');
+  }
+}
+
+// ========== DB編集機能 ==========
+
+// DB編集モーダルを開く
+function openEditDbModal(index) {
+  editingDbIndex = index;
+  const db = databases[index];
+  
+  document.getElementById('editDbName').value = db.name;
+  document.getElementById('editDbId').value = db.id;
+  document.getElementById('editDbModal').style.display = 'flex';
+}
+
+// DB編集を保存
+async function saveEditDb() {
+  const newName = document.getElementById('editDbName').value.trim();
+  let newId = document.getElementById('editDbId').value.trim();
+  
+  if (!newName || !newId) {
+    showMessage('名前とIDを入力してください', 'error');
+    return;
+  }
+  
+  // IDのクレンジング
+  const cleanId = newId.replace(/[-\s]/g, '');
+  if (!/^[a-f0-9]{32}$/i.test(cleanId)) {
+    showMessage('データベースIDの形式が正しくありません', 'error');
+    return;
+  }
+  
+  databases[editingDbIndex] = { id: cleanId, name: newName };
+  saveToStorage();
+  
+  closeEditDbModal();
+  renderDbList();
+  showMessage('✓ データベースを更新しました', 'success');
+}
+
+function closeEditDbModal() {
+  document.getElementById('editDbModal').style.display = 'none';
+  editingDbIndex = null;
+}
+
 // イベントリスナー
 elements.saveApiKeyBtn.addEventListener('click', saveApiKey);
 elements.addDbBtn.addEventListener('click', addDatabase);
+
+// Google認証
+elements.googleAuthBtn.addEventListener('click', authenticateGoogle);
+elements.googleSignOutBtn.addEventListener('click', signOutGoogle);
+
+// DB編集モーダル
+document.getElementById('saveEditDbBtn').addEventListener('click', saveEditDb);
+document.getElementById('cancelEditDbBtn').addEventListener('click', closeEditDbModal);
+document.getElementById('editDbModal').addEventListener('click', (e) => {
+  if (e.target.id === 'editDbModal') closeEditDbModal();
+});
 
 // 初期化実行
 init();
