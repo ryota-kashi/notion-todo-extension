@@ -390,6 +390,7 @@ function createTodoElement(todo) {
       }
       isEditing = false;
     }
+  });
 
 
   // Googleタスク追加ボタンのイベント
