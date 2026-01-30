@@ -46,12 +46,57 @@ NotionのTODOデータベースをChrome拡張機能のサイドパネルで管�
    - URL例: `https://www.notion.so/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx?v=...`
    - `?v=`の前の32文字の英数字がデータベースID
 
-### 4. 拡張機能を設定
+### 4. Googleカレンダー連携の設定 (Google Apps Script)
+
+この拡張機能は、Google Apps Script (GAS) を経由してGoogleカレンダー/Tasksにタスクを追加します。
+
+1. [Google Apps Script](https://script.google.com/home) にアクセスし、「新しいプロジェクト」を作成
+2. 以下のコードをエディタに貼り付け:
+
+   ```javascript
+   function doPost(e) {
+     const data = JSON.parse(e.postData.contents);
+     const title = data.title;
+
+     // Google Tasksに追加 (デフォルトのリスト)
+     // Tasks APIが有効になっている必要があります
+     // カレンダーに追加したい場合は CalendarApp.createEvent(...) を使用してください
+     try {
+       const taskListId = "@default";
+       Tasks.Tasks.insert(
+         {
+           title: title,
+           due: new Date().toISOString(),
+         },
+         taskListId,
+       );
+
+       return ContentService.createTextOutput(
+         JSON.stringify({ status: "success" }),
+       ).setMimeType(ContentService.MimeType.JSON);
+     } catch (err) {
+       return ContentService.createTextOutput(
+         JSON.stringify({ status: "error", message: err.toString() }),
+       ).setMimeType(ContentService.MimeType.JSON);
+     }
+   }
+   ```
+
+3. 左側のメニューから「サービス」の横の「+」をクリックし、**Google Tasks API** を追加
+4. 右上の「デプロイ」→「新しいデプロイ」をクリック
+5. 歯車アイコンから「ウェブアプリ」を選択
+   - 説明: 任意
+   - 次のユーザーとして実行: **自分**
+   - アクセスできるユーザー: **全員** (これを選択しないと拡張機能からアクセスできません)
+6. 「デプロイ」をクリックし、発行された **ウェブアプリURL** をコピー
+
+### 5. 拡張機能を設定
 
 1. Chrome拡張機能一覧で「Notion TODO Manager」の「拡張機能のオプション」をクリック
 2. 以下を入力:
    - **Notion APIキー**: 手順2でコピーしたInternal Integration Token
    - **データベースID**: 手順3で取得したデータベースID
+   - **GAS WebアプリURL**: 手順4で取得したウェブアプリURL
 3. 「保存」をクリック
 
 ## 使い方

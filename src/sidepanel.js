@@ -859,20 +859,13 @@ async function saveDueDate() {
 
 // Googleカレンダー(Tasks)に追加
 async function addToGoogleCalendar(title) {
-  // GAS URLがない場合は、Googleカレンダー作成画面を直接開く（セットアップ不要モード）
+  // GAS URLがない場合はエラーを表示
   if (!config.gasWebAppUrl) {
-    const text = encodeURIComponent(title);
-    // 今日の日付 (YYYYMMDD形式)
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    const dateStr = `${yyyy}${mm}${dd}`;
-    // 終日イベントとして登録
-    const dates = `${dateStr}/${dateStr}`;
-    
-    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=From%20Notion%20Extension`;
-    window.open(url, '_blank');
+    showMessage('GAS URLを設定してください', 'error');
+    // 設定ページを開くよう促す（オプション）
+    setTimeout(() => {
+        chrome.runtime.openOptionsPage();
+    }, 1500);
     return;
   }
 
