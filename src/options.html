@@ -39,26 +39,7 @@
         <button id="saveGasUrlBtn">保存</button>
       </div>
       
-      <details class="help-details">
-        <summary>ℹ️ GAS設定手順 (クリックして展開)</summary>
-        <div class="help-content">
-          <ol>
-            <li><a href="https://script.google.com/home" target="_blank">Google Apps Script</a> で「新しいプロジェクト」を作成</li>
-            <li>エディタに以下のコードをコピペ
-              <pre><code>function doPost(e) {
-  var data = JSON.parse(e.postData.contents);
-  var task = { title: data.title, due: new Date().toISOString() };
-  var newTask = Tasks.Tasks.insert(task, '@default');
-  return ContentService.createTextOutput(JSON.stringify({status: 'success'}));
-}</code></pre>
-            </li>
-            <li>左側の「サービス」(+) から <strong>Google Tasks API</strong> を追加</li>
-            <li>「デプロイ」→「新しいデプロイ」→「Webアプリ」を選択</li>
-            <li>アクセスできるユーザーを <strong>「全員」</strong> にしてデプロイ</li>
-            <li>発行されたURLを上のフォームに入力して保存</li>
-          </ol>
-        </div>
-      </details>
+
     </div>
 
     <div class="section">
