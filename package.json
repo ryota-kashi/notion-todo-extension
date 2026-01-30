@@ -1,0 +1,17 @@
+{
+  "name": "notion-todo-extension",
+  "version": "1.1.0",
+  "description": "NotionのTODOデータベースをサイドパネルで管理し、Google Tasksと連携",
+  "scripts": {
+    "build": "node build.js",
+    "watch": "node build.js --watch"
+  },
+  "keywords": [
+    "notion",
+    "todo",
+    "chrome-extension",
+    "google-tasks"
+  ],
+  "author": "Ryota Kashiwagi",
+  "license": "MIT"
+}
