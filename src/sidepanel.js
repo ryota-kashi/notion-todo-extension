@@ -4,6 +4,7 @@ let config = {
   apiKey: "",
   databases: [],
   activeDatabaseId: "",
+  gasWebAppUrl: "",
 };
 let todos = [];
 
@@ -68,6 +69,7 @@ elements.dbSelector.addEventListener("change", async (e) => {
   const newId = e.target.value;
   config.activeDatabaseId = newId;
   titlePropertyName = ""; // キャッシュをクリア
+  databaseSchema = null; // スキーマキャッシュをクリア
   chrome.storage.sync.set({ activeDatabaseId: newId });
   await loadTodos();
 });
@@ -88,6 +90,7 @@ async function loadConfig() {
         resolve({
           apiKey: (result.notionApiKey || "").trim(),
           databases: databases,
+          gasWebAppUrl: result.gasWebAppUrl || "",
         });
       },
     );
@@ -124,23 +127,68 @@ async function getDatabaseSchema() {
   const data = await response.json();
   databaseSchema = {
     properties: data.properties,
-    datePropertyName: null,
-    tagPropertyName: null,
-    availableTags: [],
+    titlePropertyName: null,    // タイトルプロパティ名
+    datePropertyName: null,     // 日付プロパティ名
+    tagPropertyName: null,      // タグプロパティ名
+    statusPropertyName: null,   // ステータスプロパティ名
+    checkboxPropertyName: null, // チェックボックスプロパティ名
+    availableTags: [],          // 利用可能なタグ
+    completedStatusNames: [],   // 「完了」とみなすステータス名リスト
   };
 
-  // 日付プロパティとタグプロパティを特定
+  // プロパティを解析
   for (const [name, prop] of Object.entries(data.properties)) {
-    if (prop.type === "date" && !databaseSchema.datePropertyName) {
+    // タイトル
+    if (prop.type === "title") {
+      databaseSchema.titlePropertyName = name;
+    }
+    // 日付
+    else if (prop.type === "date" && !databaseSchema.datePropertyName) {
       databaseSchema.datePropertyName = name;
     }
-    if (prop.type === "multi_select" && !databaseSchema.tagPropertyName) {
+    // タグ (Multi-select)
+    else if (prop.type === "multi_select" && !databaseSchema.tagPropertyName) {
       databaseSchema.tagPropertyName = name;
       databaseSchema.availableTags = prop.multi_select.options.map(
         (opt) => opt.name,
       );
     }
+    // ステータス
+    else if (prop.type === "status" && !databaseSchema.statusPropertyName) {
+      databaseSchema.statusPropertyName = name;
+      
+      // "Complete" または "完了" グループに属するオプション名を抽出
+      if (prop.status && prop.status.groups) {
+        const completeGroups = prop.status.groups.filter(g => 
+          g.name === "Complete" || g.name === "Completed" || g.name === "完了"
+        );
+        const completeGroupIds = completeGroups.map(g => g.id);
+        
+        // グループIDに一致するオプションを抽出
+        if (prop.status.options) {
+            prop.status.options.forEach(opt => {
+                // グループIDが一致、またはグループ名自体が「完了」などである場合
+                if (completeGroupIds.includes(opt.group_id) || completeGroups.some(g => g.name === opt.name)) {
+                    databaseSchema.completedStatusNames.push(opt.name);
+                }
+            });
+        }
+      }
+      // デフォルト: "Done", "Complete", "完了" は常に完了扱いにする（フォールバック）
+      ["Done", "Complete", "Completed", "完了"].forEach(st => {
+          if (!databaseSchema.completedStatusNames.includes(st)) {
+              databaseSchema.completedStatusNames.push(st);
+          }
+      });
+    }
+    // チェックボックス
+    else if (prop.type === "checkbox" && !databaseSchema.checkboxPropertyName) {
+        databaseSchema.checkboxPropertyName = name;
+    }
   }
+
+  // グローバル変数にも反映（互換性のため）
+  titlePropertyName = databaseSchema.titlePropertyName;
 
   return databaseSchema;
 }
@@ -184,32 +232,11 @@ async function loadTodos() {
 
     const data = await response.json();
 
-    // 2. タイトルプロパティ名を特定（キャッシュがない場合のみ）
-    if (!titlePropertyName) {
-      const dbResponse = await fetch(
-        `https://api.notion.com/v1/databases/${getActiveDatabaseId()}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${config.apiKey}`,
-            "Notion-Version": "2022-06-28",
-          },
-        },
-      );
+    // 2. スキーマ情報を確保（タイトル名や完了ステータス定義を取得）
+    await getDatabaseSchema();
+    const activeTitleKey = databaseSchema.titlePropertyName || "Name";
 
-      if (dbResponse.ok) {
-        const dbData = await dbResponse.json();
-        for (const [name, prop] of Object.entries(dbData.properties)) {
-          if (prop.type === "title") {
-            titlePropertyName = name;
-            break;
-          }
-        }
-      }
-    }
 
-    // 🏆 キャッシュが取れなかった場合のフォールバック
-    const activeTitleKey = titlePropertyName || "Name";
 
     // 3. データをフィルタリング（空データ、アーカイブ、完了済みを除外）
     todos = data.results.filter((page) => {
@@ -315,6 +342,15 @@ function createTodoElement(todo) {
 
     metaHtml += "</div>";
   }
+  
+  // Googleカレンダー追加ボタン (常に表示)
+  const googleBtnHtml = `
+    <button class="btn-icon google-task-btn" title="Googleカレンダーに追加">
+      <svg viewBox="0 0 24 24" fit="" height="100%" width="100%" preserveAspectRatio="xMidYMid meet" focusable="false">
+        <path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 002 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5v-5z"></path>
+      </svg>
+    </button>
+  `;
 
   div.innerHTML = `
     <div class="todo-checkbox">
@@ -326,6 +362,7 @@ function createTodoElement(todo) {
       <div class="todo-content" contenteditable="true" spellcheck="false">${escapeHtml(title)}</div>
       ${metaHtml}
     </div>
+    ${googleBtnHtml}
   `;
 
   const checkbox = div.querySelector(".todo-checkbox");
@@ -353,7 +390,19 @@ function createTodoElement(todo) {
       }
       isEditing = false;
     }
-  });
+
+
+  // Googleタスク追加ボタンのイベント
+  const googleBtn = div.querySelector('.google-task-btn');
+  if (googleBtn) {
+    googleBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      // ボタンのアニメーション
+      googleBtn.classList.add('loading');
+      await addToGoogleCalendar(title);
+      googleBtn.classList.remove('loading');
+    });
+  }
 
   todoContent.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -449,12 +498,30 @@ function getTodoTitle(todo) {
 
 // 完了状態を取得（フィルタリング用）
 function getTodoStatus(todo) {
-  // すべてのプロパティをスキャンして状態を探す
+  // スキーマがあればそれを使う
+  if (databaseSchema) {
+    // ステータスプロパティがある場合
+    if (databaseSchema.statusPropertyName && databaseSchema.completedStatusNames) {
+      const prop = todo.properties[databaseSchema.statusPropertyName];
+      if (prop && prop.type === "status" && prop.status) {
+        return databaseSchema.completedStatusNames.includes(prop.status.name);
+      }
+    }
+    // チェックボックスプロパティがある場合
+    if (databaseSchema.checkboxPropertyName) {
+        const prop = todo.properties[databaseSchema.checkboxPropertyName];
+        if (prop && prop.type === "checkbox") {
+            return prop.checkbox;
+        }
+    }
+  }
+
+  // フォールバック: すべてのプロパティをスキャンして状態を探す
   for (const prop of Object.values(todo.properties)) {
     // ステータス型（最優先）
     if (prop.type === "status" && prop.status) {
-      // 「完了」の場合は表示しない（trueを返す）
-      return prop.status.name === "完了" || prop.status.name === "Done";
+      // 「完了」の場合は表示しない
+      return prop.status.name === "完了" || prop.status.name === "Done" || prop.status.name === "Completed";
     }
     // チェックボックス型
     if (prop.type === "checkbox") {
@@ -707,9 +774,18 @@ function hideLoading() {
   elements.loading.style.display = "none";
 }
 
-function showError(message) {
+function showMessage(message, type = 'error') {
   elements.errorMessage.textContent = message;
+  elements.errorMessage.className = type === 'success' ? 'success-message' : 'error-message';
   elements.errorMessage.style.display = "block";
+  
+  if (type === 'success') {
+    setTimeout(hideError, 3000);
+  }
+}
+
+function showError(message) {
+  showMessage(message, 'error');
 }
 
 function hideError() {
@@ -777,6 +853,54 @@ async function saveDueDate() {
   } catch (error) {
     hideLoading();
     showError(`エラー: ${error.message}`);
+  }
+}
+
+// Googleカレンダー(Tasks)に追加
+async function addToGoogleCalendar(title) {
+  // GAS URLがない場合は、Googleカレンダー作成画面を直接開く（セットアップ不要モード）
+  if (!config.gasWebAppUrl) {
+    const text = encodeURIComponent(title);
+    // 今日の日付 (YYYYMMDD形式)
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const dateStr = `${yyyy}${mm}${dd}`;
+    // 終日イベントとして登録
+    const dates = `${dateStr}/${dateStr}`;
+    
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&dates=${dates}&details=From%20Notion%20Extension`;
+    window.open(url, '_blank');
+    return;
+  }
+
+  try {
+    // ユーザーへのフィードバック（トースト的なものが理想だが、とりあえずログ）
+    showLoading();
+
+    const response = await fetch(config.gasWebAppUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ title: title }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Googleカレンダーへの追加に失敗しました');
+    }
+
+    // 成功メッセージを表示
+    showMessage('Googleカレンダーにタスクを追加しました！', 'success');
+
+  } catch (error) {
+    hideLoading();
+    showMessage(`エラー: ${error.message}`, 'error');
+    console.error("Error adding to Google Calendar:", error);
+  } finally {
+    hideLoading();
   }
 }
 

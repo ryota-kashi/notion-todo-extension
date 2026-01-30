@@ -30,7 +30,39 @@
         </div>
 
         <div class="section">
-          <h2>データベース管理</h2>
+      <h2>Google連携設定 (任意)</h2>
+      <p class="description">Googleカレンダー(Tasks)に「今日のタスク」として追加するための設定です。<br>
+      Google Apps Script (GAS) のWebアプリURLを入力してください。</p>
+      <div class="input-group">
+        <label for="gasUrl">GAS WebアプリURL:</label>
+        <input type="text" id="gasUrl" placeholder="https://script.google.com/macros/s/..." />
+        <button id="saveGasUrlBtn">保存</button>
+      </div>
+      
+      <details class="help-details">
+        <summary>ℹ️ GAS設定手順 (クリックして展開)</summary>
+        <div class="help-content">
+          <ol>
+            <li><a href="https://script.google.com/home" target="_blank">Google Apps Script</a> で「新しいプロジェクト」を作成</li>
+            <li>エディタに以下のコードをコピペ
+              <pre><code>function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var task = { title: data.title, due: new Date().toISOString() };
+  var newTask = Tasks.Tasks.insert(task, '@default');
+  return ContentService.createTextOutput(JSON.stringify({status: 'success'}));
+}</code></pre>
+            </li>
+            <li>左側の「サービス」(+) から <strong>Google Tasks API</strong> を追加</li>
+            <li>「デプロイ」→「新しいデプロイ」→「Webアプリ」を選択</li>
+            <li>アクセスできるユーザーを <strong>「全員」</strong> にしてデプロイ</li>
+            <li>発行されたURLを上のフォームに入力して保存</li>
+          </ol>
+        </div>
+      </details>
+    </div>
+
+    <div class="section">
+      <h2>データベース設定</h2>
           <p class="description">
             表示を切り替えたいデータベースを複数登録できます。
           </p>

@@ -1,3 +1,53 @@
+/* Help Details */
+.help-details {
+  margin-top: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background-color: #f9fafb;
+}
+
+.help-details summary {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  color: #4b5563;
+  list-style: none; /* Hide default triangle if desired, or keep it */
+  user-select: none;
+}
+
+.help-details summary:hover {
+  background-color: #f3f4f6;
+  border-radius: 8px;
+}
+
+.help-content {
+  padding: 0 14px 14px 14px;
+  font-size: 13px;
+  color: #374151;
+  line-height: 1.6;
+}
+
+.help-content ol {
+  padding-left: 20px;
+  margin: 0;
+}
+
+.help-content li {
+  margin-bottom: 8px;
+}
+
+.help-content pre {
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 8px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: monospace;
+  margin: 8px 0;
+  font-size: 11px;
+}
+
 :root {
   --primary: #10b981;
   --primary-dark: #059669;

@@ -596,3 +596,26 @@ footer {
 .btn-google-tasks:active {
   transform: translateY(0);
 }
+
+/* メッセージスタイル */
+.error-message {
+  padding: 12px;
+  background-color: #fee2e2;
+  color: #dc2626;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  display: none;
+  animation: slideIn 0.3s ease-out;
+}
+
+.success-message {
+  padding: 12px;
+  background-color: #d1fae5;
+  color: #065f46;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 13px; /* Fixed syntax error here */
+  display: none;
+  animation: slideIn 0.3s ease-out;
+}
