@@ -911,91 +911,6 @@ function closeTagModal() {
   editingTodoId = null;
 }
 
-// ========== Google Tasks連携機能 ==========
-
-// 本日のTODOをGoogle Tasksに追加
-async function addTodayTodosToGoogleTasks() {
-  try {
-    // 認証確認
-    const result = await chrome.storage.sync.get(['googleAccessToken']);
-    if (!result.googleAccessToken) {
-      showError('Google認証が必要です。設定ページで認証してください。');
-      setTimeout(() => chrome.runtime.openOptionsPage(), 2000);
-      return;
-    }
-    
-    showLoading();
-    
-    // 本日が期日のTODOをフィルタリング
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStr = today.toISOString().split('T')[0];
-    
-    const todayTodos = todos.filter(todo => {
-      const dueDate = getTodoDueDate(todo);
-      return dueDate && dueDate.startsWith(todayStr);
-    });
-    
-    if (todayTodos.length === 0) {
-      hideLoading();
-      showError('本日期日のTODOがありません');
-      return;
-    }
-    
-    // デフォルトタスクリストIDを取得
-    const taskListResponse = await fetch('https://tasks.googleapis.com/tasks/v1/users/@me/lists', {
-      headers: {
-        'Authorization': `Bearer ${result.googleAccessToken}`
-      }
-    });
-    
-    if (!taskListResponse.ok) {
-      throw new Error('タスクリスト取得失敗');
-    }
-    
-    const taskLists = await taskListResponse.json();
-    const defaultTaskList = taskLists.items[0].id;
-    
-    // 各TODOをタスクとして追加
-    let successCount = 0;
-    for (const todo of todayTodos) {
-      const title = getTodoTitle(todo);
-      const tags = getTodoTags(todo);
-      const notionUrl = `https://notion.so/${todo.id.replace(/-/g, '')}`;
-      
-      const notes = `Notion: ${notionUrl}\nタグ: ${tags.join(', ')}`;
-      
-      const taskResponse = await fetch(`https://tasks.googleapis.com/tasks/v1/lists/${defaultTaskList}/tasks`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${result.googleAccessToken}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          title: title,
-          notes: notes,
-          due: todayStr + 'T00:00:00.000Z'
-        })
-      });
-      
-      if (taskResponse.ok) {
-        successCount++;
-      }
-    }
-    
-    hideLoading();
-    showError(`✓ ${successCount}件のタスクをGoogle Tasksに追加しました`);
-    
-  } catch (error) {
-    hideLoading();
-    if (error.message.includes('タスクリスト取得失敗')) {
-      showError('Google認証の有効期限が切れています。設定ページで再認証してください。');
-      setTimeout(() => chrome.runtime.openOptionsPage(), 2000);
-    } else {
-      showError(`エラー: ${error.message}`);
-    }
-  }
-}
 
 // イベントリスナー
 elements.refreshBtn.addEventListener("click", loadTodos);
@@ -1029,8 +944,6 @@ document.getElementById('tagModal').addEventListener('click', (e) => {
   if (e.target.id === 'tagModal') closeTagModal();
 });
 
-// Google Tasksボタン
-document.getElementById('addToGoogleTasksBtn').addEventListener('click', addTodayTodosToGoogleTasks);
 
 
 // 初期化実行
