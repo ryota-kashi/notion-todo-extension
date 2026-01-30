@@ -4,7 +4,7 @@ let config = {
   apiKey: "",
   databases: [],
   activeDatabaseId: "",
-  gasWebAppUrl: "",
+
 };
 let todos = [];
 
@@ -90,7 +90,7 @@ async function loadConfig() {
         resolve({
           apiKey: (result.notionApiKey || "").trim(),
           databases: databases,
-          gasWebAppUrl: result.gasWebAppUrl || "",
+
         });
       },
     );
@@ -343,14 +343,7 @@ function createTodoElement(todo) {
     metaHtml += "</div>";
   }
   
-  // Googleカレンダー追加ボタン (常に表示)
-  const googleBtnHtml = `
-    <button class="task-action-btn google-task-btn" title="Googleカレンダーに追加">
-      <svg viewBox="0 0 24 24" fit="" height="100%" width="100%" preserveAspectRatio="xMidYMid meet" focusable="false">
-        <path fill="currentColor" d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 002 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2zm-7 5h5v5h-5v-5z"></path>
-      </svg>
-    </button>
-  `;
+
 
   div.innerHTML = `
     <div class="todo-checkbox">
@@ -362,7 +355,7 @@ function createTodoElement(todo) {
       <div class="todo-content" contenteditable="true" spellcheck="false">${escapeHtml(title)}</div>
       ${metaHtml}
     </div>
-    ${googleBtnHtml}
+
   `;
 
   const checkbox = div.querySelector(".todo-checkbox");
@@ -393,17 +386,7 @@ function createTodoElement(todo) {
   });
 
 
-  // Googleタスク追加ボタンのイベント
-  const googleBtn = div.querySelector('.google-task-btn');
-  if (googleBtn) {
-    googleBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      // ボタンのアニメーション
-      googleBtn.classList.add('loading');
-      await addToGoogleCalendar(title);
-      googleBtn.classList.remove('loading');
-    });
-  }
+
 
   todoContent.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
@@ -857,46 +840,7 @@ async function saveDueDate() {
   }
 }
 
-// Googleカレンダー(Tasks)に追加
-async function addToGoogleCalendar(title) {
-  // GAS URLがない場合はエラーを表示
-  if (!config.gasWebAppUrl) {
-    showMessage('GAS URLを設定してください', 'error');
-    // 設定ページを開くよう促す（オプション）
-    setTimeout(() => {
-        chrome.runtime.openOptionsPage();
-    }, 1500);
-    return;
-  }
 
-  try {
-    // ユーザーへのフィードバック（トースト的なものが理想だが、とりあえずログ）
-    showLoading();
-
-    const response = await fetch(config.gasWebAppUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ title: title }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.message || 'Googleカレンダーへの追加に失敗しました');
-    }
-
-    // 成功メッセージを表示
-    showMessage('Googleカレンダーにタスクを追加しました！', 'success');
-
-  } catch (error) {
-    hideLoading();
-    showMessage(`エラー: ${error.message}`, 'error');
-    console.error("Error adding to Google Calendar:", error);
-  } finally {
-    hideLoading();
-  }
-}
 
 // 期日を削除
 async function removeDueDate() {

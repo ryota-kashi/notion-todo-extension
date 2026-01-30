@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Notion TODO Manager",
-  "version": "1.1.0",
-  "description": "NotionのTODOデータベースをサイドパネルで管理し、Google Tasksと連携",
+  "version": "2.0",
+  "description": "NotionのTODOデータベースをサイドパネルで管理",
   "permissions": ["sidePanel", "storage"],
   "host_permissions": [
     "https://api.notion.com/*"

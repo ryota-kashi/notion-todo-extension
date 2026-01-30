@@ -3,8 +3,7 @@
 const elements = {
   apiKey: document.getElementById('apiKey'),
   saveApiKeyBtn: document.getElementById('saveApiKeyBtn'),
-  gasUrl: document.getElementById('gasUrl'),
-  saveGasUrlBtn: document.getElementById('saveGasUrlBtn'),
+
   dbName: document.getElementById('dbName'),
   databaseId: document.getElementById('databaseId'),
   addDbBtn: document.getElementById('addDbBtn'),
@@ -23,10 +22,7 @@ async function init() {
       elements.apiKey.value = result.notionApiKey;
     }
 
-    // GAS URLの読み込み
-    if (result.gasWebAppUrl) {
-      elements.gasUrl.value = result.gasWebAppUrl;
-    }
+
 
     // データベースリストの読み込み
     if (result.notionDatabases) {
@@ -47,26 +43,7 @@ async function init() {
 
 
 
-// GAS URLを保存
-function saveGasUrl() {
-  const url = elements.gasUrl.value.trim();
-  if (!url) {
-    // 空の場合は削除（機能をオフにする）として扱う
-    chrome.storage.sync.remove('gasWebAppUrl', () => {
-      showMessage('GAS URLを削除しました', 'success');
-    });
-    return;
-  }
-  
-  if (!url.startsWith('https://script.google.com/')) {
-    showMessage('正しいGAS WebアプリURLを入力してください', 'error');
-    return;
-  }
 
-  chrome.storage.sync.set({ gasWebAppUrl: url }, () => {
-    showMessage('✓ GAS URLを保存しました', 'success');
-  });
-}
 
 // APIキーのみ保存
 function saveApiKey() {
@@ -229,7 +206,7 @@ function closeEditDbModal() {
 
 // イベントリスナー
 elements.saveApiKeyBtn.addEventListener('click', saveApiKey);
-elements.saveGasUrlBtn.addEventListener('click', saveGasUrl);
+
 elements.addDbBtn.addEventListener('click', addDatabase);
 
 

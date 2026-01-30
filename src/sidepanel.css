@@ -48,7 +48,7 @@ body {
   background: var(--bg-soft);
 }
 
-/* ヘッダー */
+/* 繝倥ャ繝繝ｼ */
 header {
   padding: 12px 16px;
   background: var(--bg-gradient);
@@ -133,7 +133,7 @@ header h1 {
   transform: translateY(0) scale(0.98);
 }
 
-/* フォームエリア */
+/* 繝輔か繝ｼ繝繧ｨ繝ｪ繧｢ */
 .add-task-form {
   padding: 20px;
   display: flex;
@@ -181,7 +181,7 @@ header h1 {
   filter: brightness(1.05);
 }
 
-/* TODOリスト */
+/* TODO繝ｪ繧ｹ繝� */
 .todo-list {
   flex: 1;
   overflow-y: auto;
@@ -191,7 +191,7 @@ header h1 {
   gap: 10px;
 }
 
-/* スクロールバーのスタイル */
+/* 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ繝舌�縺ｮ繧ｹ繧ｿ繧､繝ｫ */
 .todo-list::-webkit-scrollbar {
   width: 8px;
 }
@@ -350,7 +350,7 @@ header h1 {
   border: 1px solid var(--primary-light);
 }
 
-/* フッター */
+/* 繝輔ャ繧ｿ繝ｼ */
 footer {
   padding: 16px;
   text-align: center;
@@ -367,7 +367,7 @@ footer {
   opacity: 0.8;
 }
 
-/* その他スタイル */
+/* 縺昴�莉悶せ繧ｿ繧､繝ｫ */
 .spinner {
   width: 32px;
   height: 32px;
@@ -413,7 +413,7 @@ footer {
   border-radius: 10px;
 }
 
-/* モーダル */
+/* 繝｢繝ｼ繝繝ｫ */
 .modal {
   display: none;
   position: fixed;
@@ -495,7 +495,7 @@ footer {
   transform: translateY(-1px);
 }
 
-/* タグチェックボックス */
+/* 繧ｿ繧ｰ繝√ぉ繝�け繝懊ャ繧ｯ繧ｹ */
 #tagCheckboxes {
   display: flex;
   flex-direction: column;
@@ -529,7 +529,7 @@ footer {
   accent-color: var(--primary);
 }
 
-/* インタラクティブ要素 */
+/* 繧､繝ｳ繧ｿ繝ｩ繧ｯ繝�ぅ繝冶ｦ∫ｴ� */
 .due-date,
 .tag {
   cursor: pointer;
@@ -560,48 +560,8 @@ footer {
   transform: scale(1.05);
 }
 
-/* フェードアウトアニメーション */
+/* 繝輔ぉ繝ｼ繝峨い繧ｦ繝医い繝九Γ繝ｼ繧ｷ繝ｧ繝ｳ */
 .todo-item.fade-out {
-  opacity: 0;
-  transform: translateX(-20px);
-  transition: all 0.4s ease;
-}
-
-/* Google Tasksセクション */
-.google-tasks-section {
-  padding: 12px 16px;
-  background: white;
-  border-top: 1px solid #f1f5f9;
-}
-
-.btn-google-tasks {
-  width: 100%;
-  padding: 12px;
-  background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(66, 133, 244, 0.3);
-}
-
-.btn-google-tasks:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.4);
-}
-
-.btn-google-tasks:active {
-  transform: translateY(0);
-}
-
-/* メッセージスタイル */
-.error-message {
-  padding: 12px;
-  background-color: #fee2e2;
-  color: #dc2626;
   border-radius: 8px;
   margin-bottom: 16px;
   font-size: 13px;
@@ -619,30 +579,56 @@ footer {
   display: none;
   animation: slideIn 0.3s ease-out;
 }
-/ *   g~�g~y�g~o�g~b�g~o�g~w�]~g�]~s�]~�aa0]~s�  * /  
- . t a s k - a c t i o n - b t n   {  
-     b a c k g r o u n d :   # f 3 f 4 f 6 ;  
-     b o r d e r :   1 p x   s o l i d   # e 5 e 7 e b ;  
-     b o r d e r - r a d i u s :   8 p x ;  
-     w i d t h :   3 2 p x ;  
-     h e i g h t :   3 2 p x ;  
-     d i s p l a y :   f l e x ;  
-     a l i g n - i t e m s :   c e n t e r ;  
-     j u s t i f y - c o n t e n t :   c e n t e r ;  
-     c u r s o r :   p o i n t e r ;  
-     t r a n s i t i o n :   a l l   0 . 2 s   e a s e ;  
-     c o l o r :   # 6 b 7 2 8 0 ;   / *   t e x t - m u t e d   * /  
-     m a r g i n - l e f t :   a u t o ;   / *   ?�s�v�o�:~k�Ǉ�0�%g~�0* /  
- }  
-  
- . t a s k - a c t i o n - b t n : h o v e r   {  
-     b a c k g r o u n d :   # e 5 e 7 e b ;  
-     c o l o r :   v a r ( - - p r i m a r y ) ;  
-     b o r d e r - c o l o r :   v a r ( - - p r i m a r y - l i g h t ) ;  
-     t r a n s f o r m :   t r a n s l a t e Y ( - 1 p x ) ;  
- }  
-  
- . t a s k - a c t i o n - b t n : a c t i v e   {  
-     t r a n s f o r m :   t r a n s l a t e Y ( 0 ) ;  
- }  
+/ *   g~�g~y�g~o�g~b�g~o�g~w�]~g�]~s�]~ﾊaa0]~s�  * / 
+ 
+ . t a s k - a c t i o n - b t n   { 
+ 
+     b a c k g r o u n d :   # f 3 f 4 f 6 ; 
+ 
+     b o r d e r :   1 p x   s o l i d   # e 5 e 7 e b ; 
+ 
+     b o r d e r - r a d i u s :   8 p x ; 
+ 
+     w i d t h :   3 2 p x ; 
+ 
+     h e i g h t :   3 2 p x ; 
+ 
+     d i s p l a y :   f l e x ; 
+ 
+     a l i g n - i t e m s :   c e n t e r ; 
+ 
+     j u s t i f y - c o n t e n t :   c e n t e r ; 
+ 
+     c u r s o r :   p o i n t e r ; 
+ 
+     t r a n s i t i o n :   a l l   0 . 2 s   e a s e ; 
+ 
+     c o l o r :   # 6 b 7 2 8 0 ;   / *   t e x t - m u t e d   * / 
+ 
+     m a r g i n - l e f t :   a u t o ;   / *   ?㎏�v塵�:~k�ﾇ�0ﾋ%g~�0* / 
+ 
+ } 
+ 
+ 
+ 
+ . t a s k - a c t i o n - b t n : h o v e r   { 
+ 
+     b a c k g r o u n d :   # e 5 e 7 e b ; 
+ 
+     c o l o r :   v a r ( - - p r i m a r y ) ; 
+ 
+     b o r d e r - c o l o r :   v a r ( - - p r i m a r y - l i g h t ) ; 
+ 
+     t r a n s f o r m :   t r a n s l a t e Y ( - 1 p x ) ; 
+ 
+ } 
+ 
+ 
+ 
+ . t a s k - a c t i o n - b t n : a c t i v e   { 
+ 
+     t r a n s f o r m :   t r a n s l a t e Y ( 0 ) ; 
+ 
+ } 
+ 
  
