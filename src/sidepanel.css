@@ -24,6 +24,79 @@
   box-sizing: border-box;
 }
 
+.add-prop-btn {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #f3f4f6;
+  color: #9ca3af;
+  border: 1px dashed #d1d5db;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-block;
+  vertical-align: middle;
+}
+.add-prop-btn:hover {
+  background: #e5e7eb;
+  color: #6b7280;
+  border-style: solid;
+}
+
+/* タスクカードスタイル */
+.todo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #ffffff;
+  border: 2px solid #475569; /* 非常に濃いグレー（Slate-600） */
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: all 0.2s ease;
+}
+
+.todo-item:hover {
+  border-color: #1e293b; /* ホバー時はほぼ黒（Slate-800） */
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  transform: translateY(-1px);
+}
+
+.done-btn {
+  background: #f3f4f6;
+  color: #9ca3af;
+  border: 1px solid #e5e7eb;
+  padding: 8px 16px; /* 少し大きく */
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  opacity: 0; /* デフォルトは非表示（または薄く） */
+  transform: translateX(10px);
+}
+
+/* リストアイテムにマウスが乗ったらボタンを表示（グレー） */
+.todo-item:hover .done-btn {
+  opacity: 1;
+  transform: translateX(0);
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: #cbd5e1;
+}
+
+/* ボタン自体にマウスが乗ったら緑色（強調） */
+.done-btn:hover {
+  background: #10b981 !important;
+  color: #ffffff !important;
+  border-color: #059669 !important;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+}
+
 body {
   font-family:
     "Inter",

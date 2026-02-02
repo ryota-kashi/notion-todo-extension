@@ -163,11 +163,15 @@ async function addDatabase() {
     // すべてのプロパティをデフォルトで表示
     const visibleProperties = Object.keys(schema);
     
+    // ユーザー一覧も取得
+    const users = await fetchUsers();
+
     databases.push({ 
       id: cleanId, 
       name: name,
       schema: schema,
-      visibleProperties: visibleProperties
+      visibleProperties: visibleProperties,
+      users: users
     });
     saveToStorage();
     
@@ -678,7 +682,7 @@ async function refreshSchema() {
     renderFilters(db);
     
     saveToStorage();
-    showMessage('✓ プロパティ情報を更新しました', 'success');
+    showMessage(`✓ プロパティ情報を更新しました (ユーザー: ${users.length}名取得)`, 'success');
   } catch (error) {
     showMessage(`更新エラー: ${error.message}`, 'error');
   } finally {
@@ -775,7 +779,8 @@ async function saveEditDb() {
     schema: db.schema,
     visibleProperties: visibleProperties,
     filters: getFiltersFromUI(),
-    filterOperator: document.querySelector('input[name="filterOperator"]:checked')?.value || 'and'
+    filterOperator: document.querySelector('input[name="filterOperator"]:checked')?.value || 'and',
+    users: db.users // 既存のユーザーリストを維持（更新ボタンで更新済みのはずだが、ここでも維持）
   };
   saveToStorage();
   

@@ -171,6 +171,8 @@ function getActiveDatabaseId() {
 // let titlePropertyName = ""; // Removed
 // let databaseSchema = null; // 廃止: databaseSchemas[dbId] を使用
 let editingTodoId = null; // 現在編集中のTODO ID
+let editingPropName = null; // 現在編集中のプロパティ名
+let currentPeopleIds = []; // 編集中の担当者IDリスト（編集用一時保存）
 // const pageTitleCache = {}; // Removed duplicate definition
 const pendingRequests = {}; // リクエストの重複排除用
 
@@ -476,25 +478,30 @@ function createTodoElement(todo) {
   const properties = {};
   
   for (const [propName, prop] of Object.entries(todo.properties)) {
-    if (prop.type === 'date' && prop.date) {
-      properties[propName] = { type: 'date', value: prop.date.start };
-    } else if ((prop.type === 'multi_select' || prop.type === 'select') && (prop.multi_select || prop.select)) {
-      const tags = prop.type === 'multi_select' 
-        ? prop.multi_select.map(t => t.name)
-        : [prop.select.name];
-      properties[propName] = { type: 'tags', value: tags };
-
+    if (prop.type === 'date') {
+      properties[propName] = { type: 'date', value: prop.date ? prop.date.start : null };
+    } else if (prop.type === 'multi_select' || prop.type === 'select') {
+      let tags = [];
+       if (prop.type === 'multi_select' && prop.multi_select) {
+          tags = prop.multi_select.map(t => t.name);
+       } else if (prop.type === 'select' && prop.select) {
+          tags = [prop.select.name];
+       }
+       properties[propName] = { type: 'tags', value: tags.length > 0 ? tags : null };
+    
     } else if (prop.type === 'rich_text' && prop.rich_text && prop.rich_text.length > 0) {
       properties[propName] = { type: 'rich_text', value: prop.rich_text[0].plain_text };
     } else if (prop.type === 'number' && prop.number !== null) {
       properties[propName] = { type: 'number', value: prop.number };
-    } else if (prop.type === 'people' && prop.people && prop.people.length > 0) {
-      // 名前がない場合は "User" または "Unknown" と表示
-      const people = prop.people.map(p => ({
-        id: p.id,
-        name: p.name || (p.object === 'user' ? 'User' : 'Unknown')
-      }));
-      properties[propName] = { type: 'people', value: people };
+    } else if (prop.type === 'people') {
+      let people = [];
+      if (prop.people && prop.people.length > 0) {
+         people = prop.people.map(p => ({
+           id: p.id,
+           name: p.name || (p.object === 'user' ? 'User' : 'Unknown')
+         }));
+      }
+      properties[propName] = { type: 'people', value: people.length > 0 ? people : null };
     } else if (prop.type === 'url' && prop.url) {
       properties[propName] = { type: 'url', value: prop.url };
     } else if (prop.type === 'rollup' && prop.rollup) {
@@ -524,22 +531,34 @@ function createTodoElement(todo) {
       if (!isPropertyVisible(propName)) continue;
       
       if (propData.type === 'date') {
-        const isOverdue = new Date(propData.value) < new Date() && !isCompleted;
-        const dueDateClass = isOverdue ? "due-date overdue" : "due-date";
-        metaHtml += `<span class="${dueDateClass}" data-edit-type="duedate">📅 ${formatDate(propData.value)}</span>`;
+        if (propData.value) {
+          const isOverdue = new Date(propData.value) < new Date() && !isCompleted;
+          const dueDateClass = isOverdue ? "due-date overdue" : "due-date";
+          metaHtml += `<span class="${dueDateClass}" data-edit-type="duedate" data-edit-prop="${propName}">📅 ${formatDate(propData.value)}</span>`;
+        } else {
+           metaHtml += `<span class="add-prop-btn" data-edit-type="duedate" data-edit-prop="${propName}">📅 +</span>`;
+        }
       } else if (propData.type === 'tags') {
-        propData.value.forEach((tag) => {
-          metaHtml += `<span class="tag" data-edit-type="tag">${tag}</span>`;
-        });
+        if (propData.value) {
+          propData.value.forEach((tag) => {
+            metaHtml += `<span class="tag" data-edit-type="tag" data-edit-prop="${propName}">${tag}</span>`;
+          });
+        } else {
+           metaHtml += `<span class="add-prop-btn" data-edit-type="tag" data-edit-prop="${propName}">🏷️ +</span>`;
+        }
 
       } else if (propData.type === 'rich_text') {
         metaHtml += `<span class="rich-text-tag">📝 ${escapeHtml(propData.value)}</span>`;
       } else if (propData.type === 'number') {
         metaHtml += `<span class="number-tag">🔢 ${propData.value}</span>`;
       } else if (propData.type === 'people') {
-        propData.value.forEach((person) => {
-          metaHtml += `<span class="people-tag">👤 ${escapeHtml(person.name)}</span>`;
-        });
+        if (propData.value) {
+          propData.value.forEach((person) => {
+            metaHtml += `<span class="people-tag" data-edit-type="people" data-edit-prop="${propName}">👤 ${escapeHtml(person.name)}</span>`;
+          });
+        } else {
+           metaHtml += `<span class="add-prop-btn" data-edit-type="people" data-edit-prop="${propName}">👤 +</span>`;
+        }
       } else if (propData.type === 'url') {
         const shortUrl = propData.value.length > 30 ? propData.value.substring(0, 30) + "..." : propData.value;
         metaHtml += `<a href="${propData.value}" target="_blank" class="url-tag" title="${propData.value}">📎 ${escapeHtml(shortUrl)}</a>`;
@@ -557,24 +576,21 @@ function createTodoElement(todo) {
 
 
   div.innerHTML = `
-    <div class="todo-checkbox">
-      <svg viewBox="0 0 24 24" fill="none">
-        <polyline points="20 6 9 17 4 12"></polyline>
-      </svg>
-    </div>
     <div class="todo-text">
       <div class="todo-content" contenteditable="true" spellcheck="false">${escapeHtml(title)}</div>
       ${metaHtml}
     </div>
-
+    <button class="done-btn">完了</button>
   `;
 
-  const checkbox = div.querySelector(".todo-checkbox");
+  const doneBtn = div.querySelector(".done-btn");
   const todoContent = div.querySelector(".todo-content");
 
-  // チェックボックスクリックで完了切り替え
-  checkbox.addEventListener("click", (e) => {
+  // 完了ボタンクリックで完了切り替え
+  doneBtn.addEventListener("click", (e) => {
     e.stopPropagation();
+    // 誤タップ防止のため、確認ダイアログを出すか？-> UX重視ならトーストでUndoさせるのが良いが今回は即実行
+    // ボタン化することで誤タップは減るはず。
     toggleTodo(todo.id, !isCompleted);
   });
 
@@ -630,10 +646,14 @@ function createTodoElement(todo) {
     element.addEventListener('click', (e) => {
       e.stopPropagation();
       const editType = element.dataset.editType;
+      const propName = element.dataset.editProp;
+      
       if (editType === 'duedate') {
-        openDueDateModal(todo.id, dueDate);
+        openDueDateModal(todo.id, dueDate, propName); // propNameを追加
       } else if (editType === 'tag') {
-        openTagModal(todo.id, tags);
+        openTagModal(todo.id, propName);
+      } else if (editType === 'people') {
+        openPeopleModal(todo.id, propName);
       }
     });
   });
@@ -1111,8 +1131,10 @@ function escapeHtml(text) {
 // ========== 期日編集機能 ==========
 
 // 期日編集モーダルを開く
-function openDueDateModal(todoId, currentDate) {
+function openDueDateModal(todoId, currentDate, propName) {
   editingTodoId = todoId;
+  editingPropName = propName; // グローバル変数にセット
+  
   const modal = document.getElementById('dueDateModal');
   const input = document.getElementById('dueDateInput');
   
@@ -1129,19 +1151,139 @@ function openDueDateModal(todoId, currentDate) {
 
 
 // 期日を保存
+
+    
+// 共通レンダーヘッダー
+function updateTodoDateDOM(todoId, newDate) {
+  const todoEl = document.querySelector(`.todo-item[data-id="${todoId}"]`);
+  if (!todoEl) return;
+  
+  // 既存の日付タグを探す
+  let dateTag = todoEl.querySelector('[data-edit-type="duedate"]');
+  const propName = dateTag ? dateTag.dataset.editProp : null;
+  
+  // プロパティ名が分からない場合（まだタグがない場合など）、再描画したほうが安全だが
+  // 今回は簡易的にメタエリアに追加または更新する。
+  // しかしプロパティ名が必要。editingPropNameがあるはず。
+  
+  // 既存タグがあれば内容更新
+  if (dateTag) {
+     if (newDate) {
+       dateTag.innerHTML = `📅 ${formatDate(newDate)}`;
+       // Overdue check
+       const isOverdue = new Date(newDate) < new Date();
+       dateTag.className = isOverdue ? "due-date overdue" : "due-date";
+     } else {
+       // 日付削除されたら + ボタンに戻す
+       const prop = dateTag.dataset.editProp;
+       // outerHTMLで置換
+       dateTag.outerHTML = `<span class="add-prop-btn" data-edit-type="duedate" data-edit-prop="${prop}">📅 +</span>`;
+       // イベントリスナーが消えるので再付与が必要だが、親のイベントデリゲーションがないため
+       // createTodoElement内で個別に付与している。
+       // したがって、個別に付与しなおす必要がある。
+       // これは面倒なので、いっそそのTodoだけ再レンダリングする関数を作る方が良いが、
+       // ここでは簡易的に、リスト全体のリロードの代わりに「このTodoだけデータ更新して再描画」する戦略をとるべきか？
+       // データ更新するには todos 配列を更新する必要がある。
+     }
+  } else {
+     // +ボタンだった場合
+     const addBtn = todoEl.querySelector(`.add-prop-btn[data-edit-type="duedate"]`);
+     if (addBtn && newDate) {
+        const prop = addBtn.dataset.editProp;
+        const isOverdue = new Date(newDate) < new Date();
+        const cls = isOverdue ? "due-date overdue" : "due-date";
+        const newTagHtml = `<span class="${cls}" data-edit-type="duedate" data-edit-prop="${prop}">📅 ${formatDate(newDate)}</span>`;
+        addBtn.outerHTML = newTagHtml;
+     }
+  }
+  
+  // Listener再付与が面倒なので、DOM更新後にクリックイベントが動かなくなる可能性がある。
+  // createTodoElementの実装を見ると、`metaElements.forEach...` で付与している。
+  // ここで置換してしまうとイベントが消える。
+  // 解決策: 親要素(todo-meta)にデリゲートするか、置換後にリスナーを付ける。
+  // 今回はリスナーを付け直す処理を入れる。
+  reattachMetaListeners(todoEl);
+}
+
+function reattachMetaListeners(todoEl) {
+    const metaElements = todoEl.querySelectorAll('[data-edit-type]');
+    metaElements.forEach(element => {
+      // 既存のリスナーを削除するのは難しいので、クローンして置換することで削除
+      const newEl = element.cloneNode(true);
+      element.parentNode.replaceChild(newEl, element);
+      
+      newEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const editType = newEl.dataset.editType;
+        const propName = newEl.dataset.editProp;
+        const todoId = todoEl.dataset.id; // 要素から取得
+        const todo = todos.find(t => t.id === todoId); // 最新のtodosを参照
+        
+        if (editType === 'duedate') {
+            // 日付はtodos内の値を参照するが、DOM更新のみでtodos更新していない場合ズレる。
+            // なのでtodosも更新する必要がある。
+            // updateTodoDateInList関数でtodosも更新する。
+            const currentVal = todo.properties[propName]?.date?.start || null;
+            openDueDateModal(todoId, currentVal); 
+        } else if (editType === 'tag') {
+          openTagModal(todoId, propName);
+        } else if (editType === 'people') {
+          openPeopleModal(todoId, propName);
+        }
+      });
+    });
+}
+
+// 配列内のデータを更新するヘルパー
+function updateLocalTodoData(todoId, propName, type, value) {
+    const todo = todos.find(t => t.id === todoId);
+    if (!todo) return;
+    
+    if (!todo.properties[propName]) {
+        // プロパティ自体がない場合のコンストラクタ的な処理が必要だが
+        // 通常はキーはある。
+        todo.properties[propName] = {};
+    }
+    
+    if (type === 'date') {
+        todo.properties[propName] = { type: 'date', date: value ? { start: value } : null };
+    } else if (type === 'people') {
+       todo.properties[propName] = { type: 'people', people: value }; // value is array of objects
+    } else if (type === 'tags') {
+       // tagsの場合は select/multi_select で構造が違うので注意
+       // saveTags側で適切に処理する必要がある
+    }
+}
+
+
+// 期日を保存
 async function saveDueDate() {
   const input = document.getElementById('dueDateInput');
-  const newDate = input.value;
+  const newDate = input.value; // YYYY-MM-DD
+  const btn = document.getElementById('saveDueDateBtn');
   
-  if (!newDate || !editingTodoId) return;
+  if (!editingTodoId) return;
+  
+  const originalText = btn.textContent;
+  btn.textContent = '保存中...';
+  btn.disabled = true;
   
   try {
-    showLoading();
     const schema = await getDatabaseSchema();
+    // 日付プロパティ名は editingPropName から取得すべきだが、modalを開くときに渡していない？
+    // openDueDateModal は (todoId, currentDate) しか受け取っていない。
+    // しかし createTodoElement では data-edit-prop を渡しているのに。
+    // openDueDateModal も改修して propName を受け取るようにすべき。
+    // 現状の実装: schema.datePropertyName を使っている (L1168)。
+    // これだと複数の日付プロパティがある場合にバグる。
+    // 今回の修正で openDueDateModal も propName を受け取るように変更する。
     
     if (!schema.datePropertyName) {
       throw new Error('日付プロパティが見つかりません');
     }
+    
+    // editingPropName が null の場合（古いコード経由）、schemaから推測
+    const targetProp = editingPropName || schema.datePropertyName;
     
     const response = await fetch(`https://api.notion.com/v1/pages/${editingTodoId}`, {
       method: 'PATCH',
@@ -1152,8 +1294,8 @@ async function saveDueDate() {
       },
       body: JSON.stringify({
         properties: {
-          [schema.datePropertyName]: {
-            date: { start: newDate }
+          [targetProp]: {
+            date: newDate ? { start: newDate } : null
           }
         }
       })
@@ -1161,13 +1303,21 @@ async function saveDueDate() {
     
     if (!response.ok) throw new Error('期日更新失敗');
     
+    // 成功したらDOMと内部データを更新
+    updateLocalTodoData(editingTodoId, targetProp, 'date', newDate);
+    updateTodoDateDOM(editingTodoId, newDate);
+    
     closeDueDateModal();
-    await loadTodos();
+    // await loadTodos(); // 遅延の原因なので削除
+    
   } catch (error) {
-    hideLoading();
     showError(`エラー: ${error.message}`);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 }
+
 
 
 
@@ -1217,30 +1367,70 @@ function closeDueDateModal() {
 // ========== タグ編集機能 ==========
 
 // タグ編集モーダルを開く
-async function openTagModal(todoId, currentTags) {
+async function openTagModal(todoId, propName) {
   editingTodoId = todoId;
+  editingPropName = propName;
   
   try {
-    const schema = await getDatabaseSchema();
-    
-    if (!schema.tagPropertyName) {
-      showError('タグプロパティが見つかりません');
-      return;
+    const todo = todos.find(t => t.id === todoId);
+    if (!todo) return;
+
+    // 現在のタグを取得
+    let currentTags = [];
+    const prop = todo.properties[propName];
+    if (prop) {
+      if (prop.type === 'multi_select' && prop.multi_select) {
+        currentTags = prop.multi_select.map(t => t.name);
+      } else if (prop.type === 'select' && prop.select) {
+        currentTags = [prop.select.name];
+      }
     }
+
+    const dbId = todo.parent.database_id;
+    let schema = databaseSchemas[dbId];
+    if (!schema) schema = await getDatabaseSchema(dbId);
     
+    // プロパティ定義から選択肢を取得
+    const propDef = schema.properties[propName];
+    if (!propDef) {
+       showError('プロパティ定義が見つかりません');
+       return;
+    }
+
+    let availableTags = [];
+    if (propDef.type === 'multi_select') {
+      availableTags = propDef.multi_select.options.map(o => o.name);
+    } else if (propDef.type === 'select') {
+      availableTags = propDef.select.options.map(o => o.name);
+    }
+
     const modal = document.getElementById('tagModal');
     const container = document.getElementById('tagCheckboxes');
     container.innerHTML = '';
     
     // 利用可能なタグのチェックボックスを生成
-    schema.availableTags.forEach(tag => {
+    availableTags.forEach(tag => {
       const label = document.createElement('label');
       label.className = 'tag-checkbox-label';
+      // Select型の場合はラジオボタン風の挙動にしたいが、UIはチェックボックスで統一し、JSで制御
+      // 今回はシンプルに複数選択UIとする
       
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.value = tag;
       checkbox.checked = currentTags.includes(tag);
+      
+      // Select型の場合は単一選択にするためのリスナー
+      if (propDef.type === 'select') {
+         checkbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+               // 他を外す
+               container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                  if (cb !== e.target) cb.checked = false;
+               });
+            }
+         });
+      }
       
       label.appendChild(checkbox);
       label.appendChild(document.createTextNode(tag));
@@ -1255,21 +1445,230 @@ async function openTagModal(todoId, currentTags) {
 
 // タグを保存
 async function saveTags() {
-  if (!editingTodoId) return;
+  if (!editingTodoId || !editingPropName) return;
   
+  const btn = document.getElementById('saveTagBtn');
+  const originalText = btn.textContent;
+  btn.textContent = '保存中...';
+  btn.disabled = true;
+
   try {
-    showLoading();
-    const schema = await getDatabaseSchema();
-    
-    if (!schema.tagPropertyName) {
-      throw new Error('タグプロパティが見つかりません');
-    }
+    // showLoading(); // モーダル内ローディングに変更
     
     // 選択されたタグを取得
     const checkboxes = document.querySelectorAll('#tagCheckboxes input[type="checkbox"]');
     const selectedTags = Array.from(checkboxes)
       .filter(cb => cb.checked)
       .map(cb => ({ name: cb.value }));
+    
+    // 現在のTODO情報を取得してプロパティタイプを確認
+    const todo = todos.find(t => t.id === editingTodoId);
+    const propType = todo.properties[editingPropName].type;
+
+    let updateBody = {};
+    if (propType === 'select') {
+       updateBody = {
+          select: selectedTags.length > 0 ? selectedTags[0] : null
+       };
+    } else {
+       updateBody = {
+          multi_select: selectedTags
+       };
+    }
+
+    const response = await fetch(`https://api.notion.com/v1/pages/${editingTodoId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        properties: {
+          [editingPropName]: updateBody
+        }
+      })
+    });
+    
+    if (!response.ok) throw new Error('タグ更新失敗');
+    
+    closeTagModal();
+    await loadTodos(); // タグの場合はDOM更新が複雑（色情報の欠落など）なので、一旦リロードのままにするか、色情報をキャッシュしていればJS更新可能。
+    // 今回は日付のラグが主訴なので、タグはリロードのままで進めるが、ローディングUIは改善する。
+    
+  } catch (error) {
+    showError(`エラー: ${error.message}`);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
+function closeTagModal() {
+  document.getElementById('tagModal').style.display = 'none';
+  editingTodoId = null;
+  editingPropName = null;
+}
+
+// ========== 担当者編集機能 ==========
+
+// 担当者モーダルを開く
+async function openPeopleModal(todoId, propName) {
+  editingTodoId = todoId;
+  editingPropName = propName;
+  
+  try {
+    const todo = todos.find(t => t.id === todoId);
+    if (!todo) return;
+    
+    const dbId = todo.parent.database_id;
+    // DB設定からユーザーリストを取得
+    const dbConfig = config.databases.find(d => d.id.replace(/-/g, '') === dbId.replace(/-/g, ''));
+    let users = dbConfig && dbConfig.users ? dbConfig.users : [];
+    
+    // 現在の担当者を取得
+    currentPeopleIds = [];
+    const prop = todo.properties[propName];
+    if (prop && prop.people) {
+       currentPeopleIds = prop.people.map(p => p.id);
+    }
+
+    const modal = document.getElementById('peopleModal');
+    const container = document.getElementById('peopleCheckboxes');
+    const searchInput = document.getElementById('peopleSearchInput');
+    
+    searchInput.value = ''; // リセット
+    
+    // レンダリング関数
+    const renderList = (filterText = '') => {
+      container.innerHTML = '';
+      
+      // 入力がない場合（かつ未選択）は何も表示しない、または「検索してください」と表示
+      // ただし、既に担当者が設定されている場合はその人だけ表示する？
+      // 要望によると「候補は出さずに入力後にマッチ思想な人だけを表示」とのこと。
+      // なので、空文字の場合は空にする。ただし、現在選択中のユーザーは表示しておきたいかも？
+      // 今回はシンプルに「入力がある場合のみ表示」にする。
+      
+      const lowerFilter = filterText.toLowerCase();
+      
+      /*
+      // 初期表示（入力なし）の場合
+      if (!filterText) {
+         // 現在選択されているユーザーだけ表示する
+         const selectedUsers = users.filter(u => currentPoolIds.includes(u.id));
+         if (selectedUsers.length > 0) {
+            // selectedUsersを表示...
+            // （コード重複を避けるため下のループを使うが、フィルタリング条件を変える）
+         } else {
+            container.innerHTML = '<p style="color:#666; font-size:12px; padding:8px;">名前を入力して検索...</p>';
+            return;
+         }
+      }
+      */
+      
+      // フィルタリング処理
+      // 1. 選択済みのユーザー（常に表示）
+      // 2. 検索条件にマッチするユーザー（選択済み以外）
+      
+      const selectedUsers = users.filter(u => currentPeopleIds.includes(u.id));
+      const matchedUsers = filterText 
+          ? users.filter(u => !currentPeopleIds.includes(u.id) && u.name.toLowerCase().includes(lowerFilter))
+          : []; // 入力がない場合は選択済み以外は表示しない（パフォーマンス対策）
+      
+      // 表示リストを作成（重複なし）
+      // 選択済みユーザーは常に先頭に表示
+      const displayUsers = [...selectedUsers, ...matchedUsers];
+      
+      // 最大表示数制限（選択済みは全て出す、検索結果は絞る）
+      const maxDisplay = 50;
+      if (displayUsers.length > maxDisplay) {
+         displayUsers.length = maxDisplay; 
+      }
+      
+      displayUsers.forEach(user => {
+        const label = document.createElement('label');
+        label.className = 'tag-checkbox-label'; // スタイル流用
+        label.style.display = 'flex';
+        label.style.alignItems = 'center';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = user.id;
+        checkbox.dataset.name = user.name;
+        // データソースからチェック状態を判定するのではなく、
+        // DOM上の（ユーザーが変更中の）状態を維持する必要があるが、
+        // ここは renderList が呼ばれるたびに再生成されるため、
+        // currentPoolIds だけでなく、現在チェックされている状態も反映させる必要がある？
+        // いや、currentPoolIds は初期値だが、ユーザーが操作した内容はどこにある？
+        // チェックボックスの状態が変わったら currentPoolIds も更新すべきか？
+        // あるいは renderList を呼ぶ前（検索入力時）に、現在のチェック状態を currentPoolIds にマージする？
+        
+        // 修正案:
+        // checkbox.addEventListener('change') で currentPeopleIds をリアルタイム更新するようにする。
+        // そうすれば再描画されても checked 状態が維持される。
+        checkbox.checked = currentPeopleIds.includes(user.id);
+        
+        checkbox.addEventListener('change', (e) => {
+           if (e.target.checked) {
+              if (!currentPeopleIds.includes(user.id)) currentPeopleIds.push(user.id);
+           } else {
+              currentPeopleIds = currentPeopleIds.filter(id => id !== user.id);
+           }
+           // チェック変更時にはリストを再描画しない（操作感を損なうため）
+           // 検索入力時にだけ再描画される
+        });
+        
+        const avatar = document.createElement('span');
+        avatar.textContent = '👤 ';
+        avatar.style.marginRight = '4px';
+        
+        label.appendChild(checkbox);
+        label.appendChild(avatar);
+        label.appendChild(document.createTextNode(user.name));
+        container.appendChild(label);
+      });
+      
+      if (container.children.length === 0) {
+         if (users.length === 0) {
+            container.innerHTML = `
+              <div style="padding:12px; color:#b45309; background:#fffbeb; border-radius:8px; font-size:12px; line-height:1.5;">
+                <p style="margin-bottom:8px; font-weight:bold;">⚠️ ユーザー情報がありません</p>
+                <p>設定画面を開き、右上の<br><b>「🔄 更新」ボタン</b>を押してください。</p>
+              </div>`;
+         } else {
+            container.innerHTML = '<p style="color:#888; font-size:12px; padding:8px;">ユーザーが見つかりません</p>';
+         }
+      }
+    };
+    
+    renderList();
+    
+    // 検索イベント
+    searchInput.oninput = (e) => renderList(e.target.value);
+    
+    modal.style.display = 'flex';
+    searchInput.focus();
+    
+  } catch (error) {
+    showError(`エラー: ${error.message}`);
+  }
+}
+
+// 担当者を保存
+async function savePeople() {
+  if (!editingTodoId || !editingPropName) return;
+  
+  const btn = document.getElementById('savePeopleBtn');
+  const originalText = btn.textContent;
+  btn.textContent = '保存中...';
+  btn.disabled = true;
+
+  try {
+    // showLoading();
+    
+    const checkboxes = document.querySelectorAll('#peopleCheckboxes input[type="checkbox"]'); // これは使わず currentPeopleIds を使う
+    
+    const selectedPeople = currentPeopleIds.map(id => ({ id: id }));
     
     const response = await fetch(`https://api.notion.com/v1/pages/${editingTodoId}`, {
       method: 'PATCH',
@@ -1280,26 +1679,87 @@ async function saveTags() {
       },
       body: JSON.stringify({
         properties: {
-          [schema.tagPropertyName]: {
-            multi_select: selectedTags
+          [editingPropName]: {
+            people: selectedPeople
           }
         }
       })
     });
     
-    if (!response.ok) throw new Error('タグ更新失敗');
+    if (!response.ok) throw new Error('担当者更新失敗');
     
-    closeTagModal();
-    await loadTodos();
+    closePeopleModal();
+    await loadTodos(); // PersonもDOM更新がややこしい（アバター画像は無いが）ので一旦リロード。
+    // 時間があればここもOptimistic UIにするが、まずは要望の強い日付を優先。
+    
   } catch (error) {
-    hideLoading();
     showError(`エラー: ${error.message}`);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
 }
 
-function closeTagModal() {
-  document.getElementById('tagModal').style.display = 'none';
+function closePeopleModal() {
+  document.getElementById('peopleModal').style.display = 'none';
   editingTodoId = null;
+  editingPropName = null;
+}
+
+// ユーザー一覧を強制更新
+async function refreshUsers() {
+  const btn = document.getElementById('refreshPeopleBtn');
+  const originalContent = btn.innerHTML;
+  btn.innerHTML = '<div class="spinner" style="width:14px; height:14px; border-width:2px;"></div>';
+  btn.disabled = true;
+  
+  try {
+    const response = await fetch('https://api.notion.com/v1/users', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Notion-Version': '2022-06-28'
+      }
+    });
+    
+    if (!response.ok) throw new Error('ユーザー情報の取得に失敗しました');
+    const data = await response.json();
+    const users = data.results.map(u => ({ id: u.id, name: u.name || 'Unknown' }));
+    
+    // 現在のDB設定に保存
+    const activeDbId = getActiveDatabaseId();
+    if (activeDbId) {
+      const dbIndex = config.databases.findIndex(d => d.id.replace(/-/g, '') === activeDbId.replace(/-/g, ''));
+      if (dbIndex !== -1) {
+        config.databases[dbIndex].users = users; // メモリ更新
+        
+        // ストレージ保存
+        await new Promise((resolve) => {
+          chrome.storage.local.set({ notionDatabases: config.databases }, resolve);
+        });
+        
+        // UI再描画（現在の検索条件を維持しつつ）
+        const searchInput = document.getElementById('peopleSearchInput');
+        // モーダルが開いている状態なので、再描画処理が必要
+        // openPeopleModal内のrenderListはローカルスコープにあるため直接呼べない。
+        // なので、簡易的に現在開いているtodoIdとpropNameを使って再オープンに似た挙動をするか、
+        // あるいはopenPeopleModal内でrefreshUsersを定義するか…
+        // ここでは一旦、モーダルを閉じずに中身を更新したいが、renderListへのアクセスがない。
+        // -> openPeopleModalを再呼び出しするのが手っ取り早い。
+        openPeopleModal(editingTodoId, editingPropName);
+        
+        // 成功メッセージ（簡易的）
+        searchInput.placeholder = `更新完了: ${users.length}名`;
+        setTimeout(() => searchInput.placeholder = 'ユーザーを検索...', 2000);
+      }
+    }
+    
+  } catch (error) {
+    showError(`更新失敗: ${error.message}`);
+  } finally {
+    btn.innerHTML = originalContent;
+    btn.disabled = false;
+  }
 }
 
 
@@ -1334,6 +1794,15 @@ document.getElementById('dueDateModal').addEventListener('click', (e) => {
 document.getElementById('tagModal').addEventListener('click', (e) => {
   if (e.target.id === 'tagModal') closeTagModal();
 });
+const peopleModal = document.getElementById('peopleModal');
+peopleModal.addEventListener('click', (e) => {
+  if (e.target.id === 'peopleModal') closePeopleModal();
+});
+
+// People Modal イベントリスナー
+document.getElementById('savePeopleBtn').addEventListener('click', savePeople);
+document.getElementById('cancelPeopleBtn').addEventListener('click', closePeopleModal);
+document.getElementById('refreshPeopleBtn').addEventListener('click', refreshUsers);
 
 
 
@@ -1363,6 +1832,22 @@ function buildNotionFilter(db) {
   }
   return { and: conditions };
 }
+
+// ストレージの変更を監視して設定を自動更新
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local') {
+    if (changes.notionApiKey) {
+      config.apiKey = changes.notionApiKey.newValue;
+    }
+    if (changes.notionDatabases) {
+      config.databases = changes.notionDatabases.newValue;
+      // 現在表示中のDBの設定が更新されたかもしれないので、スキーマキャッシュをクリアして再ロード
+      // ただし、頻繁なリロードを防ぐため、明らかに影響がある場合のみにするか、
+      // ここではconfigの更新にとどめ、次の操作時に反映されるようにする。
+      // ユーザーリスト更新のためにはconfig.databasesの更新が必須。
+    }
+  }
+});
 
 // 初期化実行
 init();
