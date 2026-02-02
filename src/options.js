@@ -90,7 +90,10 @@ async function fetchDatabaseSchema(databaseId) {
     for (const [name, prop] of Object.entries(data.properties)) {
       schema[name] = {
         type: prop.type,
-        id: prop.id
+        id: prop.id,
+        select: prop.select,
+        multi_select: prop.multi_select,
+        status: prop.status
       };
     }
     
@@ -303,35 +306,103 @@ function addFilterRow(db, filterData = null) {
   }
   
   // プロパティ選択
-  const select = document.createElement('select');
+  const propSelect = document.createElement('select');
+  propSelect.className = 'filter-prop-select';
+  
   filterableProps.forEach(([name, prop]) => {
     const option = document.createElement('option');
     option.value = name;
     option.textContent = name;
-    option.dataset.type = prop.type; // 型を記憶
+    option.dataset.type = prop.type;
     if (filterData && filterData.property === name) {
       option.selected = true;
     }
-    select.appendChild(option);
+    propSelect.appendChild(option);
   });
   
-  // 値入力
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = '値を入力 (完全一致)';
-  if (filterData) input.value = filterData.value;
+  // 値入力エリア（動的に切り替え）
+  const valueContainer = document.createElement('div');
+  valueContainer.style.flex = '2';
+  
+  const updateValueInput = () => {
+    valueContainer.innerHTML = '';
+    const propName = propSelect.value;
+    const prop = db.schema[propName];
+    let input;
+
+    if (prop.type === 'checkbox') {
+      input = document.createElement('select');
+      input.className = 'filter-value-input';
+      const op1 = document.createElement('option'); op1.value = 'true'; op1.textContent = 'Checked (✅)';
+      const op2 = document.createElement('option'); op2.value = 'false'; op2.textContent = 'Unchecked (⬜)';
+      input.appendChild(op1);
+      input.appendChild(op2);
+      if (filterData && filterData.property === propName) input.value = filterData.value;
+      
+    } else if ((prop.type === 'select' || prop.type === 'multi_select') && prop[prop.type] && prop[prop.type].options) {
+      input = document.createElement('select');
+      input.className = 'filter-value-input';
+      // 空の選択肢
+      const emptyOp = document.createElement('option'); emptyOp.value = ''; emptyOp.textContent = '(選択してください)';
+      input.appendChild(emptyOp);
+      
+      prop[prop.type].options.forEach(opt => {
+        const op = document.createElement('option');
+        op.value = opt.name;
+        op.textContent = opt.name;
+        input.appendChild(op);
+      });
+      if (filterData && filterData.property === propName) input.value = filterData.value;
+      
+    } else if (prop.type === 'status' && prop.status) {
+      input = document.createElement('select');
+      input.className = 'filter-value-input';
+      const emptyOp = document.createElement('option'); emptyOp.value = ''; emptyOp.textContent = '(選択してください)';
+      input.appendChild(emptyOp);
+      
+      // Statusは options または groups.options にある
+      const options = [];
+      if (prop.status.options) options.push(...prop.status.options);
+      if (prop.status.groups) {
+        prop.status.groups.forEach(g => options.push(...g.options));
+      }
+      
+      // 重複排除しつつ追加
+      const seen = new Set();
+      options.forEach(opt => {
+        if (!seen.has(opt.name)) {
+          seen.add(opt.name);
+          const op = document.createElement('option');
+          op.value = opt.name;
+          op.textContent = opt.name;
+          input.appendChild(op);
+        }
+      });
+      if (filterData && filterData.property === propName) input.value = filterData.value;
+
+    } else {
+      // Fallback: Text Input
+      input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'filter-value-input';
+      input.placeholder = '値を入力';
+      if (filterData && filterData.property === propName) input.value = filterData.value;
+    }
+    
+    valueContainer.appendChild(input);
+  };
+
+  propSelect.addEventListener('change', updateValueInput);
+  updateValueInput(); // 初期実行
   
   // 削除ボタン
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'delete-filter-btn';
   deleteBtn.innerHTML = '🗑️';
-  deleteBtn.title = '削除';
-  deleteBtn.addEventListener('click', () => {
-    row.remove();
-  });
+  deleteBtn.addEventListener('click', () => row.remove());
   
-  row.appendChild(select);
-  row.appendChild(input);
+  row.appendChild(propSelect);
+  row.appendChild(valueContainer);
   row.appendChild(deleteBtn);
   container.appendChild(row);
 }
@@ -404,14 +475,15 @@ function getFiltersFromUI() {
   
   const filterRows = container.querySelectorAll('.filter-item');
   filterRows.forEach(row => {
-    const select = row.querySelector('select');
-    const input = row.querySelector('input');
-    if (select && input && input.value.trim() !== "") {
-      const option = select.options[select.selectedIndex];
+    const propSelect = row.querySelector('.filter-prop-select');
+    const valueInput = row.querySelector('.filter-value-input');
+    
+    if (propSelect && valueInput && valueInput.value.trim() !== "") {
+      const option = propSelect.options[propSelect.selectedIndex];
       filters.push({
-        property: select.value,
+        property: propSelect.value,
         type: option.dataset.type,
-        value: input.value.trim()
+        value: valueInput.value.trim()
       });
     }
   });

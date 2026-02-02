@@ -531,3 +531,159 @@ label {
   font-weight: 500;
 }
 
+/* =========================================
+   フィルター設定 (Filter Settings)
+   ========================================= */
+.filter-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.filter-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.filter-item select,
+.filter-item input {
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.filter-item select {
+  flex: 1;
+  min-width: 120px;
+}
+
+.filter-item input {
+  flex: 2;
+}
+
+.filter-item .delete-filter-btn {
+  background: #fee2e2;
+  color: #dc2626;
+  border: none;
+  border-radius: 8px;
+  min-width: 36px;
+  height: 36px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.filter-item .delete-filter-btn:hover {
+  background: #ef4444;
+  color: white;
+}
+
+/* =========================================
+   UI改善用追加スタイル (UI Refinement)
+   ========================================= */
+
+/* セクションヘッダー */
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.section-header label {
+  margin-bottom: 0;
+  font-size: 14px;
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.section-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+/* アイコン付きテキストボタン（小） */
+.btn-icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background-color: white;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.btn-icon-text:hover {
+  background-color: #f9fafb;
+  border-color: #d1d5db;
+  color: var(--primary-dark);
+  transform: translateY(-1px);
+}
+
+.btn-icon-text span {
+  font-size: 14px;
+}
+
+/* プロパティチェックボックスの改善 */
+/* .checkbox-group は以前の定義(grid)が生きている前提 */
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+  margin-bottom: 0; /* 上書き */
+}
+
+.checkbox-label:hover {
+  background: #f8fafc;
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.1);
+  transform: translateY(-1px);
+}
+
+/* チェック時のスタイル */
+.checkbox-label:has(input:checked) {
+  background: #ecfdf5;
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.checkbox-label span {
+  font-size: 13px;
+  font-weight: 600;
+  color: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+

@@ -112,10 +112,14 @@
         </div>
         
         <div class="form-group">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-            <label style="margin-bottom:0;">表示するプロパティ</label>
-            <button id="refreshSchemaBtn" class="btn-secondary" style="padding: 4px 8px; font-size: 12px;">🔄 プロパティ情報を更新</button>
+        <div class="form-group">
+          <div class="section-header">
+            <label>表示するプロパティ</label>
+            <button id="refreshSchemaBtn" class="btn-icon-text" title="Notionから最新のプロパティ情報を取得">
+              <span>🔄</span> 更新
+            </button>
           </div>
+          <div class="section-desc">※サイドパネルに表示したい項目を選択してください</div>
           <div id="propertyCheckboxes" class="checkbox-group">
             <!-- プロパティチェックボックスが動的に生成されます -->
           </div>
