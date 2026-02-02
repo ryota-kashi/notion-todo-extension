@@ -11,79 +11,53 @@ const databaseSchemas = {};
 let titlePropertyName = ""; // 後方互換性のため維持(後で削除or更新)
 
 // キャッシュ
-const pageTitleCache = {};
+// キャッシュ
 const userCache = {};
+const pendingUserRequests = {};
 
-// ページタイトルを取得（キャッシュ対応）
-async function fetchPageTitle(pageId) {
-  if (pageTitleCache[pageId]) return pageTitleCache[pageId];
-
-  try {
-    const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Notion-Version": "2022-06-28",
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      let title = "無題";
-      for (const prop of Object.values(data.properties)) {
-        if (prop.type === "title" && prop.title && prop.title.length > 0) {
-          title = prop.title[0].plain_text;
-          break;
-        }
-      }
-      pageTitleCache[pageId] = title;
-      console.log(`Page title fetched: ${pageId} -> ${title}`);
-      return title;
-    } else {
-      console.warn(`Page title fetch failed: ${response.status}`, await response.text());
-      if (response.status === 403 || response.status === 404) {
-        pageTitleCache[pageId] = "...";
-        return "...";
-      }
-    }
-  } catch (error) {
-    console.error("Error fetching page title:", error);
-  }
-  return null;
-}
-
-// ユーザー情報を取得（キャッシュ対応）
+// ユーザー情報を取得（キャッシュ対応・重複排除）
 async function fetchUserProfile(userId) {
   if (userCache[userId]) return userCache[userId];
+  if (pendingUserRequests[userId]) return pendingUserRequests[userId];
+
+  const fetchPromise = (async () => {
+    try {
+      const response = await fetch(`https://api.notion.com/v1/users/${userId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Notion-Version": "2022-06-28",
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`User fetched: ${userId} -> ${data.name}`, data);
+        const name = data.name || "Unknown";
+        userCache[userId] = name;
+        return name;
+      } else {
+        const errorText = await response.text();
+        console.warn(`User fetch failed: ${response.status}`, errorText);
+        // 権限エラーなどの場合は再試行しないようにキャッシュする
+        if (response.status === 403 || response.status === 404) {
+           userCache[userId] = "User"; // キャッシュして次回以降スキップ
+           return "User";
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+    }
+    return null;
+  })();
+
+  pendingUserRequests[userId] = fetchPromise;
 
   try {
-    const response = await fetch(`https://api.notion.com/v1/users/${userId}`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Notion-Version": "2022-06-28",
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log(`User fetched: ${userId} -> ${data.name}`, data);
-      const name = data.name || "Unknown";
-      userCache[userId] = name;
-      return name;
-    } else {
-      console.warn(`User fetch failed: ${response.status}`, await response.text());
-      // 権限エラーなどの場合は再試行しないようにキャッシュする
-      if (response.status === 403 || response.status === 404) {
-         userCache[userId] = "User"; // キャッシュして次回以降スキップ
-         return "User";
-      }
-    }
-  } catch (error) {
-    console.error("Error fetching user profile:", error);
+    return await fetchPromise;
+  } finally {
+    delete pendingUserRequests[userId];
   }
-
-  return null;
 }
 
 // ロールアップから値を抽出するヘルパー
@@ -504,8 +478,7 @@ function createTodoElement(todo) {
         ? prop.multi_select.map(t => t.name)
         : [prop.select.name];
       properties[propName] = { type: 'tags', value: tags };
-    } else if (prop.type === 'relation' && prop.relation) {
-      properties[propName] = { type: 'relation', value: prop.relation.map(r => r.id) };
+
     } else if (prop.type === 'rich_text' && prop.rich_text && prop.rich_text.length > 0) {
       properties[propName] = { type: 'rich_text', value: prop.rich_text[0].plain_text };
     } else if (prop.type === 'number' && prop.number !== null) {
@@ -554,11 +527,7 @@ function createTodoElement(todo) {
         propData.value.forEach((tag) => {
           metaHtml += `<span class="tag" data-edit-type="tag">${tag}</span>`;
         });
-      } else if (propData.type === 'relation') {
-        propData.value.forEach((relId) => {
-          const cached = pageTitleCache[relId] || "...";
-          metaHtml += `<span class="relation-tag" data-rel-id="${relId}">${escapeHtml(cached)}</span>`;
-        });
+
       } else if (propData.type === 'rich_text') {
         metaHtml += `<span class="rich-text-tag">📝 ${escapeHtml(propData.value)}</span>`;
       } else if (propData.type === 'number') {
@@ -641,14 +610,14 @@ function createTodoElement(todo) {
   // イベントリスナー用に変数を準備
   let dueDate = null;
   let tags = [];
-  let relations = [];
+
   let people = [];
 
   // propertiesから値を抽出
   for (const [key, data] of Object.entries(properties)) {
     if (data.type === 'date') dueDate = data.value;
     else if (data.type === 'tags') tags = data.value;
-    else if (data.type === 'relation') relations = relations.concat(data.value);
+
     else if (data.type === 'people') people = people.concat(data.value);
   }
 
@@ -666,19 +635,7 @@ function createTodoElement(todo) {
     });
   });
 
-  // リレーション名の非同期取得
-  if (relations.length > 0) {
-    relations.forEach(relId => {
-      if (!pageTitleCache[relId]) {
-        fetchPageTitle(relId).then(name => {
-           if (name) {
-             const relTags = div.querySelectorAll(`.relation-tag[data-rel-id="${relId}"]`);
-             relTags.forEach(el => el.textContent = name);
-           }
-        });
-      }
-    });
-  }
+
 
   // 担当者名の非同期取得 (NEW)
   if (people.length > 0) {
