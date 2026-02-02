@@ -10,6 +10,66 @@ let showAllDatabases = false;
 const databaseSchemas = {};
 let titlePropertyName = ""; // 後方互換性のため維持(後で削除or更新)
 
+// キャッシュ
+const pageTitleCache = {};
+const userCache = {};
+
+// ページタイトルを取得（キャッシュ対応）
+async function fetchPageTitle(pageId) {
+  if (pageTitleCache[pageId]) return pageTitleCache[pageId];
+
+  try {
+    const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Notion-Version": "2022-06-28",
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      let title = "無題";
+      for (const prop of Object.values(data.properties)) {
+        if (prop.type === "title" && prop.title && prop.title.length > 0) {
+          title = prop.title[0].plain_text;
+          break;
+        }
+      }
+      pageTitleCache[pageId] = title;
+      return title;
+    }
+  } catch (error) {
+    console.error("Error fetching page title:", error);
+  }
+  return null;
+}
+
+// ユーザー情報を取得（キャッシュ対応）
+async function fetchUserProfile(userId) {
+  if (userCache[userId]) return userCache[userId];
+
+  try {
+    const response = await fetch(`https://api.notion.com/v1/users/${userId}`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Notion-Version": "2022-06-28",
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      const name = data.name || "Unknown";
+      userCache[userId] = name;
+      return name;
+    }
+  } catch (error) {
+    console.error("Error fetching user profile:", error);
+  }
+  return null;
+}
+
 // DOM要素
 const elements = {
   setupMessage: document.getElementById("setupMessage"),
@@ -127,7 +187,7 @@ function getActiveDatabaseId() {
 // let titlePropertyName = ""; // Removed
 // let databaseSchema = null; // 廃止: databaseSchemas[dbId] を使用
 let editingTodoId = null; // 現在編集中のTODO ID
-const pageTitleCache = {}; // リレーションタイトルのキャッシュ
+// const pageTitleCache = {}; // Removed duplicate definition
 const pendingRequests = {}; // リクエストの重複排除用
 
 // データベーススキーマを取得(プロパティ名とオプションを取得)
@@ -408,8 +468,12 @@ function createTodoElement(todo) {
     } else if (prop.type === 'number' && prop.number !== null) {
       properties[propName] = { type: 'number', value: prop.number };
     } else if (prop.type === 'people' && prop.people && prop.people.length > 0) {
-      // 名前がない場合はIDの一部を表示するか、既知のユーザー情報を参照する
-      const people = prop.people.map(p => p.name || (p.object === 'user' ? 'User' : 'Unknown'));
+      // ユーザーIDも含めて保存
+      const people = prop.people.map(p => ({
+        id: p.id,
+        name: p.name || (p.object === 'user' ? 'User' : 'Unknown'),
+        needsFetch: !p.name && p.object === 'user' // 名前がなくUserオブジェクトならフェッチ対象
+      }));
       properties[propName] = { type: 'people', value: people };
     } else if (prop.type === 'url' && prop.url) {
       properties[propName] = { type: 'url', value: prop.url };
@@ -453,7 +517,8 @@ function createTodoElement(todo) {
         metaHtml += `<span class="number-tag">🔢 ${propData.value}</span>`;
       } else if (propData.type === 'people') {
         propData.value.forEach((person) => {
-          metaHtml += `<span class="people-tag">👤 ${escapeHtml(person)}</span>`;
+          const fetchAttr = person.needsFetch ? ` data-needs-fetch="true" data-user-id="${person.id}"` : '';
+          metaHtml += `<span class="people-tag"${fetchAttr}>👤 ${escapeHtml(person.name)}</span>`;
         });
       } else if (propData.type === 'url') {
         const shortUrl = propData.value.length > 30 ? propData.value.substring(0, 30) + "..." : propData.value;
@@ -526,12 +591,14 @@ function createTodoElement(todo) {
   let dueDate = null;
   let tags = [];
   let relations = [];
+  let people = [];
 
   // propertiesから値を抽出
   for (const [key, data] of Object.entries(properties)) {
     if (data.type === 'date') dueDate = data.value;
     else if (data.type === 'tags') tags = data.value;
     else if (data.type === 'relation') relations = relations.concat(data.value);
+    else if (data.type === 'people') people = people.concat(data.value);
   }
 
   // 期日・タグ編集のクリックイベント
@@ -557,6 +624,20 @@ function createTodoElement(todo) {
              const relTags = div.querySelectorAll(`.relation-tag[data-rel-id="${relId}"]`);
              relTags.forEach(el => el.textContent = name);
            }
+        });
+      }
+    });
+  }
+
+  // 担当者名の非同期取得 (NEW)
+  if (people.length > 0) {
+    people.forEach(person => {
+      if (person.needsFetch) {
+        fetchUserProfile(person.id).then(name => {
+          if (name) {
+            const peopleTags = div.querySelectorAll(`.people-tag[data-user-id="${person.id}"]`);
+            peopleTags.forEach(el => el.textContent = `👤 ${name}`);
+          }
         });
       }
     });
