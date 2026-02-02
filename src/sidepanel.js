@@ -257,7 +257,21 @@ async function getDatabaseSchema(dbId) {
 
 // TODOを読み込む
 // TODOを読み込む
+// TODOを読み込む
 async function loadTodos() {
+  // 設定を最新化 (syncストレージから読み込み)
+  await new Promise((resolve) => {
+    chrome.storage.sync.get(['notionApiKey', 'notionDatabases', 'notionActiveDatabaseId'], (result) => {
+      if (result.notionApiKey) config.apiKey = result.notionApiKey;
+      if (result.notionDatabases) config.databases = result.notionDatabases;
+      // アクティブDBのIDが未設定ならロードしたものを使う
+      if (result.notionActiveDatabaseId && !config.activeDatabaseId) {
+        config.activeDatabaseId = result.notionActiveDatabaseId;
+      }
+      resolve();
+    });
+  });
+
   showLoading();
   hideError();
 
@@ -1073,55 +1087,7 @@ function openDueDateModal(todoId, currentDate) {
 }
 
 // リレーションIDを取得
-function getTodoRelations(todo) {
-  const relations = [];
-  for (const prop of Object.values(todo.properties)) {
-    if (prop.type === "relation" && prop.relation) {
-      prop.relation.forEach(rel => relations.push(rel.id));
-    }
-  }
-  return relations;
-}
 
-// ページタイトルを取得（キャッシュ付き）
-async function fetchPageTitle(pageId) {
-  if (pageTitleCache[pageId]) return pageTitleCache[pageId];
-  if (pendingRequests[pageId]) return pendingRequests[pageId];
-
-  const promise = (async () => {
-    try {
-      const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          "Notion-Version": "2022-06-28",
-        },
-      });
-
-      if (!response.ok) return "Unknown";
-      const data = await response.json();
-
-      let title = "無題";
-      for (const prop of Object.values(data.properties)) {
-        if (prop.type === "title" && prop.title) {
-          title = prop.title.map(t => t.plain_text).join("") || "無題";
-          break;
-        }
-      }
-      
-      pageTitleCache[pageId] = title;
-      return title;
-    } catch (error) {
-      console.error("Page fetch error:", error);
-      return "Error";
-    } finally {
-      delete pendingRequests[pageId];
-    }
-  })();
-
-  pendingRequests[pageId] = promise;
-  return promise;
-}
 
 // 期日を保存
 async function saveDueDate() {
