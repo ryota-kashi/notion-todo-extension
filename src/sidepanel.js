@@ -4,9 +4,11 @@ let config = {
   apiKey: "",
   databases: [],
   activeDatabaseId: "",
-
 };
 let todos = [];
+let showAllDatabases = false;
+const databaseSchemas = {};
+let titlePropertyName = ""; // 後方互換性のため維持(後で削除or更新)
 
 // DOM要素
 const elements = {
@@ -21,6 +23,7 @@ const elements = {
   newTaskInput: document.getElementById("newTaskInput"),
   addTaskBtn: document.getElementById("addTaskBtn"),
   dbSelector: document.getElementById("dbSelector"),
+  showAllDbToggle: document.getElementById("showAllDbToggle"),
 };
 
 // 初期化
@@ -69,8 +72,18 @@ elements.dbSelector.addEventListener("change", async (e) => {
   const newId = e.target.value;
   config.activeDatabaseId = newId;
   titlePropertyName = ""; // キャッシュをクリア
-  databaseSchema = null; // スキーマキャッシュをクリア
+  // databaseSchema = null; // 廃止
   chrome.storage.sync.set({ activeDatabaseId: newId });
+  if (!showAllDatabases) {
+    await loadTodos();
+  }
+});
+
+// 全DB表示トグルイベント
+elements.showAllDbToggle.addEventListener("change", async (e) => {
+  showAllDatabases = e.target.checked;
+  // トグル変更時はactiveDatabaseIdは変更しないが、表示モードが変わる
+  elements.dbSelector.disabled = showAllDatabases;
   await loadTodos();
 });
 
@@ -103,16 +116,21 @@ function getActiveDatabaseId() {
 }
 
 // グローバルキャッシュ
-let titlePropertyName = "";
-let databaseSchema = null; // データベーススキーマをキャッシュ
+// let titlePropertyName = ""; // Removed
+// let databaseSchema = null; // 廃止: databaseSchemas[dbId] を使用
 let editingTodoId = null; // 現在編集中のTODO ID
+const pageTitleCache = {}; // リレーションタイトルのキャッシュ
+const pendingRequests = {}; // リクエストの重複排除用
 
 // データベーススキーマを取得(プロパティ名とオプションを取得)
-async function getDatabaseSchema() {
-  if (databaseSchema) return databaseSchema;
+async function getDatabaseSchema(dbId) {
+  if (!dbId) dbId = getActiveDatabaseId();
+  if (!dbId) return null;
+
+  if (databaseSchemas[dbId]) return databaseSchemas[dbId];
 
   const response = await fetch(
-    `https://api.notion.com/v1/databases/${getActiveDatabaseId()}`,
+    `https://api.notion.com/v1/databases/${dbId}`,
     {
       method: "GET",
       headers: {
@@ -122,40 +140,44 @@ async function getDatabaseSchema() {
     },
   );
 
-  if (!response.ok) throw new Error("スキーマ取得失敗");
+  if (!response.ok) {
+      console.error(`Failed to fetch schema for ${dbId}`, response);
+      return null;
+      // throw new Error("スキーマ取得失敗"); // エラーを投げずにnullを返す方が安全かも
+  }
 
   const data = await response.json();
-  databaseSchema = {
+  const schema = {
     properties: data.properties,
-    titlePropertyName: null,    // タイトルプロパティ名
-    datePropertyName: null,     // 日付プロパティ名
-    tagPropertyName: null,      // タグプロパティ名
-    statusPropertyName: null,   // ステータスプロパティ名
-    checkboxPropertyName: null, // チェックボックスプロパティ名
-    availableTags: [],          // 利用可能なタグ
-    completedStatusNames: [],   // 「完了」とみなすステータス名リスト
+    titlePropertyName: null,
+    datePropertyName: null,
+    tagPropertyName: null,
+    statusPropertyName: null,
+    checkboxPropertyName: null,
+    availableTags: [],
+    completedStatusNames: [],
   };
 
   // プロパティを解析
   for (const [name, prop] of Object.entries(data.properties)) {
     // タイトル
     if (prop.type === "title") {
-      databaseSchema.titlePropertyName = name;
+      schema.titlePropertyName = name;
     }
     // 日付
-    else if (prop.type === "date" && !databaseSchema.datePropertyName) {
-      databaseSchema.datePropertyName = name;
+    else if (prop.type === "date" && !schema.datePropertyName) {
+      schema.datePropertyName = name;
     }
     // タグ (Multi-select)
-    else if (prop.type === "multi_select" && !databaseSchema.tagPropertyName) {
-      databaseSchema.tagPropertyName = name;
-      databaseSchema.availableTags = prop.multi_select.options.map(
+    else if (prop.type === "multi_select" && !schema.tagPropertyName) {
+      schema.tagPropertyName = name;
+      schema.availableTags = prop.multi_select.options.map(
         (opt) => opt.name,
       );
     }
     // ステータス
-    else if (prop.type === "status" && !databaseSchema.statusPropertyName) {
-      databaseSchema.statusPropertyName = name;
+    else if (prop.type === "status" && !schema.statusPropertyName) {
+      schema.statusPropertyName = name;
       
       // "Complete" または "完了" グループに属するオプション名を抽出
       if (prop.status && prop.status.groups) {
@@ -164,49 +186,91 @@ async function getDatabaseSchema() {
         );
         const completeGroupIds = completeGroups.map(g => g.id);
         
-        // グループIDに一致するオプションを抽出
         if (prop.status.options) {
             prop.status.options.forEach(opt => {
-                // グループIDが一致、またはグループ名自体が「完了」などである場合
                 if (completeGroupIds.includes(opt.group_id) || completeGroups.some(g => g.name === opt.name)) {
-                    databaseSchema.completedStatusNames.push(opt.name);
+                    schema.completedStatusNames.push(opt.name);
                 }
             });
         }
       }
-      // デフォルト: "Done", "Complete", "完了" は常に完了扱いにする（フォールバック）
+      // デフォルト: "Done", "Complete", "完了" は常に完了扱いにする
       ["Done", "Complete", "Completed", "完了"].forEach(st => {
-          if (!databaseSchema.completedStatusNames.includes(st)) {
-              databaseSchema.completedStatusNames.push(st);
+          if (!schema.completedStatusNames.includes(st)) {
+              schema.completedStatusNames.push(st);
           }
       });
     }
     // チェックボックス
-    else if (prop.type === "checkbox" && !databaseSchema.checkboxPropertyName) {
-        databaseSchema.checkboxPropertyName = name;
+    else if (prop.type === "checkbox" && !schema.checkboxPropertyName) {
+        schema.checkboxPropertyName = name;
     }
   }
 
-  // グローバル変数にも反映（互換性のため）
-  titlePropertyName = databaseSchema.titlePropertyName;
+  // キャッシュに保存
+  databaseSchemas[dbId] = schema;
 
-  return databaseSchema;
+  // 後方互換性変数（アクティブなDBの場合のみ更新）
+  if (dbId === getActiveDatabaseId()) {
+      titlePropertyName = schema.titlePropertyName;
+  }
+
+  return schema;
 }
 
 // TODOを読み込む
+// TODOを読み込む
 async function loadTodos() {
-  if (!getActiveDatabaseId() || getActiveDatabaseId() === "") {
-    console.warn("Database ID is missing. Skipping loadTodos.");
-    return;
-  }
-
   showLoading();
   hideError();
 
   try {
-    // 1. TODOリストを取得
+    let allTodos = [];
+
+    // 取得対象のDBリストを作成
+    const targetDbs = showAllDatabases
+      ? config.databases
+      : config.databases.filter((db) => db.id === getActiveDatabaseId());
+
+    if (targetDbs.length === 0) {
+      if (!showAllDatabases && !getActiveDatabaseId()) {
+         console.warn("Database ID is missing.");
+         return;
+      }
+    }
+
+    // 並列で取得
+    const promises = targetDbs.map((db) => fetchTodosFromDb(db.id));
+    const results = await Promise.all(promises);
+
+    // 結果を結合
+    allTodos = results.flat();
+
+    // 4. ソート
+    todos = allTodos.sort((a, b) => {
+      const aDone = getTodoStatus(a);
+      const bDone = getTodoStatus(b);
+      if (aDone === bDone) {
+          // 作成日時でソート (新しい順)
+          return new Date(b.created_time) - new Date(a.created_time);
+      }
+      return aDone ? 1 : -1;
+    });
+
+    hideLoading();
+    renderTodos();
+  } catch (error) {
+    hideLoading();
+    console.error("Load Error:", error);
+    showError(`Error: ${error.message}`);
+  }
+}
+
+// 単一DBからTODOを取得
+async function fetchTodosFromDb(dbId) {
+  try {
     const response = await fetch(
-      `https://api.notion.com/v1/databases/${getActiveDatabaseId()}/query`,
+      `https://api.notion.com/v1/databases/${dbId}/query`,
       {
         method: "POST",
         headers: {
@@ -226,20 +290,20 @@ async function loadTodos() {
     );
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.message || `API Error: ${response.status}`);
+        console.warn(`Failed to fetch from DB ${dbId}: ${response.status}`);
+        return [];
     }
-
+    
     const data = await response.json();
 
-    // 2. スキーマ情報を確保（タイトル名や完了ステータス定義を取得）
-    await getDatabaseSchema();
-    const activeTitleKey = databaseSchema.titlePropertyName || "Name";
+    // スキーマ確保
+    const schema = await getDatabaseSchema(dbId);
+    if (!schema) return [];
 
+    const activeTitleKey = schema.titlePropertyName || "Name";
 
-
-    // 3. データをフィルタリング（空データ、アーカイブ、完了済みを除外）
-    todos = data.results.filter((page) => {
+    // フィルタリング
+    return data.results.filter((page) => {
       // アーカイブ済みは除外
       if (page.archived) return false;
 
@@ -253,23 +317,12 @@ async function loadTodos() {
       if (!hasTitle) return false;
 
       // 完了済みタスクは除外
-      return !getTodoStatus(page);
+      return !getTodoStatus(page); // getTodoStatus now supports mixed DBs
     });
 
-    // 4. ソート
-    todos.sort((a, b) => {
-      const aDone = getTodoStatus(a);
-      const bDone = getTodoStatus(b);
-      if (aDone === bDone) return 0;
-      return aDone ? 1 : -1;
-    });
-
-    hideLoading();
-    renderTodos();
-  } catch (error) {
-    hideLoading();
-    console.error("Load Error:", error);
-    showError(`Error: ${error.message}`);
+  } catch (e) {
+      console.error(`Error fetching DB ${dbId}`, e);
+      return [];
   }
 }
 
@@ -316,10 +369,13 @@ function createTodoElement(todo) {
 
   // タグを取得
   const tags = getTodoTags(todo);
+  
+  // リレーションを取得
+  const relations = getTodoRelations(todo);
 
   // メタ情報のHTML
   let metaHtml = "";
-  if (dueDate || tags.length > 0 || true) { // 常にメタエリアを表示
+  if (dueDate || tags.length > 0 || relations.length > 0 || true) { // 常にメタエリアを表示
     metaHtml = '<div class="todo-meta">';
 
     if (dueDate) {
@@ -329,6 +385,14 @@ function createTodoElement(todo) {
     } else {
       // 期日がない場合は「+ 期日」ボタンを表示
       metaHtml += '<span class="add-tag-btn" data-edit-type="duedate">+ 期日</span>';
+    }
+
+    // リレーション表示
+    if (relations.length > 0) {
+      relations.forEach((relId) => {
+        const cached = pageTitleCache[relId] || "...";
+        metaHtml += `<span class="relation-tag" data-rel-id="${relId}">${escapeHtml(cached)}</span>`;
+      });
     }
 
     if (tags.length > 0) {
@@ -413,33 +477,63 @@ function createTodoElement(todo) {
     });
   });
 
+  // リレーション名の非同期取得
+  if (relations.length > 0) {
+    relations.forEach(relId => {
+      if (!pageTitleCache[relId]) {
+        fetchPageTitle(relId).then(name => {
+           if (name) {
+             const relTags = div.querySelectorAll(`.relation-tag[data-rel-id="${relId}"]`);
+             relTags.forEach(el => el.textContent = name);
+           }
+        });
+      }
+    });
+  }
+
   return div;
 }
 
 // TODOのタイトルを更新
 async function updateTodoTitle(todoId, newTitle) {
   try {
-    // データベース情報を取得してタイトルプロパティ名を判別
-    const dbResponse = await fetch(
-      `https://api.notion.com/v1/databases/${getActiveDatabaseId()}`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          "Notion-Version": "2022-06-28",
-        },
-      },
-    );
+    // 対象のTODOを特定
+    const todo = todos.find(t => t.id === todoId);
+    if (!todo) return;
 
-    if (!dbResponse.ok) throw new Error("DBプロパティの取得に失敗しました");
-    const dbData = await dbResponse.json();
+    const dbId = todo.parent.database_id;
+    
+    // スキーマを取得
+    let schema = databaseSchemas[dbId];
+    if (!schema) {
+        schema = await getDatabaseSchema(dbId);
+    }
+    
+    let titleKey = schema ? schema.titlePropertyName : null;
+    
+    if (!titleKey) {
+        // フォールバック: プロパティをスキャン
+        // データベース情報を取得
+        const dbResponse = await fetch(
+          `https://api.notion.com/v1/databases/${dbId}`,
+          {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${config.apiKey}`,
+              "Notion-Version": "2022-06-28",
+            },
+          },
+        );
 
-    let titleKey = "";
-    for (const [name, prop] of Object.entries(dbData.properties)) {
-      if (prop.type === "title") {
-        titleKey = name;
-        break;
-      }
+        if (!dbResponse.ok) throw new Error("DBプロパティの取得に失敗しました");
+        const dbData = await dbResponse.json();
+        
+        for (const [name, prop] of Object.entries(dbData.properties)) {
+          if (prop.type === "title") {
+            titleKey = name;
+            break;
+          }
+        }
     }
 
     const response = await fetch(`https://api.notion.com/v1/pages/${todoId}`, {
@@ -482,18 +576,21 @@ function getTodoTitle(todo) {
 
 // 完了状態を取得（フィルタリング用）
 function getTodoStatus(todo) {
-  // スキーマがあればそれを使う
-  if (databaseSchema) {
+  // スキーマを取得
+  const dbId = todo.parent.database_id;
+  const schema = databaseSchemas[dbId];
+
+  if (schema) {
     // ステータスプロパティがある場合
-    if (databaseSchema.statusPropertyName && databaseSchema.completedStatusNames) {
-      const prop = todo.properties[databaseSchema.statusPropertyName];
+    if (schema.statusPropertyName && schema.completedStatusNames) {
+      const prop = todo.properties[schema.statusPropertyName];
       if (prop && prop.type === "status" && prop.status) {
-        return databaseSchema.completedStatusNames.includes(prop.status.name);
+        return schema.completedStatusNames.includes(prop.status.name);
       }
     }
     // チェックボックスプロパティがある場合
-    if (databaseSchema.checkboxPropertyName) {
-        const prop = todo.properties[databaseSchema.checkboxPropertyName];
+    if (schema.checkboxPropertyName) {
+        const prop = todo.properties[schema.checkboxPropertyName];
         if (prop && prop.type === "checkbox") {
             return prop.checkbox;
         }
@@ -591,13 +688,23 @@ async function toggleTodo(todoId, checked) {
     // 更新するプロパティを決定
     let updateProps = {};
 
-    // ステータス型があるか確認
-    let statusKey = null;
-    let checkboxKey = null;
+    // データベース情報を取得
+    const dbId = todo.parent.database_id;
+    let schema = databaseSchemas[dbId];
+    if (!schema) {
+        schema = await getDatabaseSchema(dbId);
+    }
 
-    for (const [key, value] of Object.entries(todo.properties)) {
-      if (value.type === "status") statusKey = key;
-      if (value.type === "checkbox") checkboxKey = key;
+    // ステータス型があるか確認
+    let statusKey = schema ? schema.statusPropertyName : null;
+    let checkboxKey = schema ? schema.checkboxPropertyName : null;
+
+    if (!statusKey && !checkboxKey) {
+        // フォールバック: プロパティをスキャン
+        for (const [key, value] of Object.entries(todo.properties)) {
+          if (value.type === "status") statusKey = key;
+          if (value.type === "checkbox") checkboxKey = key;
+        }
     }
 
     if (statusKey) {
@@ -797,6 +904,57 @@ function openDueDateModal(todoId, currentDate) {
   }
   
   modal.style.display = 'flex';
+}
+
+// リレーションIDを取得
+function getTodoRelations(todo) {
+  const relations = [];
+  for (const prop of Object.values(todo.properties)) {
+    if (prop.type === "relation" && prop.relation) {
+      prop.relation.forEach(rel => relations.push(rel.id));
+    }
+  }
+  return relations;
+}
+
+// ページタイトルを取得（キャッシュ付き）
+async function fetchPageTitle(pageId) {
+  if (pageTitleCache[pageId]) return pageTitleCache[pageId];
+  if (pendingRequests[pageId]) return pendingRequests[pageId];
+
+  const promise = (async () => {
+    try {
+      const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Notion-Version": "2022-06-28",
+        },
+      });
+
+      if (!response.ok) return "Unknown";
+      const data = await response.json();
+
+      let title = "無題";
+      for (const prop of Object.values(data.properties)) {
+        if (prop.type === "title" && prop.title) {
+          title = prop.title.map(t => t.plain_text).join("") || "無題";
+          break;
+        }
+      }
+      
+      pageTitleCache[pageId] = title;
+      return title;
+    } catch (error) {
+      console.error("Page fetch error:", error);
+      return "Error";
+    } finally {
+      delete pendingRequests[pageId];
+    }
+  })();
+
+  pendingRequests[pageId] = promise;
+  return promise;
 }
 
 // 期日を保存

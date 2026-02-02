@@ -10,9 +10,16 @@
     <div class="container">
       <header>
         <h1>📝 Notion TODO</h1>
-        <select id="dbSelector" class="db-select">
-          <option value="">読込中...</option>
-        </select>
+        <div class="db-controls">
+          <select id="dbSelector" class="db-select">
+            <option value="">読込中...</option>
+          </select>
+          <label class="toggle-switch" title="全データベースを表示">
+            <input type="checkbox" id="showAllDbToggle">
+            <span class="slider"></span>
+            <span class="label-text">全DB</span>
+          </label>
+        </div>
         <div class="header-buttons">
           <button id="settingsBtn" class="icon-btn" title="設定">
             <svg
