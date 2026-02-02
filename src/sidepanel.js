@@ -37,7 +37,14 @@ async function fetchPageTitle(pageId) {
         }
       }
       pageTitleCache[pageId] = title;
+      console.log(`Page title fetched: ${pageId} -> ${title}`);
       return title;
+    } else {
+      console.warn(`Page title fetch failed: ${response.status}`, await response.text());
+      if (response.status === 403 || response.status === 404) {
+        pageTitleCache[pageId] = "...";
+        return "...";
+      }
     }
   } catch (error) {
     console.error("Error fetching page title:", error);
@@ -66,6 +73,11 @@ async function fetchUserProfile(userId) {
       return name;
     } else {
       console.warn(`User fetch failed: ${response.status}`, await response.text());
+      // 権限エラーなどの場合は再試行しないようにキャッシュする
+      if (response.status === 403 || response.status === 404) {
+         userCache[userId] = "User"; // キャッシュして次回以降スキップ
+         return "User";
+      }
     }
   } catch (error) {
     console.error("Error fetching user profile:", error);
