@@ -368,11 +368,11 @@ function addFilterRow(db, filterData = null) {
       input.appendChild(emptyOp);
       
       // Statusは options または groups.options にある
+      // Statusの選択肢を取得
       const options = [];
       if (prop.status.options) options.push(...prop.status.options);
-      if (prop.status.groups) {
-        prop.status.groups.forEach(g => options.push(...g.options));
-      }
+      
+      // groupsの処理は不要（optionsに全て含まれているため）およびエラー回避のため削除
       
       // 重複排除しつつ追加
       const seen = new Set();
@@ -447,6 +447,8 @@ async function refreshSchema() {
     // 新しいプロパティは visibleProperties に含まれないので、自動的に非表示になる。
     // チェックボックスを描画し直す
     renderPropertyCheckboxes(db);
+    // フィルターUIも再描画（プルダウン化を反映）
+    renderFilters(db);
     
     saveToStorage();
     showMessage('✓ プロパティ情報を更新しました', 'success');
