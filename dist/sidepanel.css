@@ -48,7 +48,7 @@ body {
   background: var(--bg-soft);
 }
 
-/* ヘッダー */
+/* 繝倥ャ繝繝ｼ */
 header {
   padding: 12px 16px;
   background: var(--bg-gradient);
@@ -133,7 +133,7 @@ header h1 {
   transform: translateY(0) scale(0.98);
 }
 
-/* フォームエリア */
+/* 繝輔か繝ｼ繝繧ｨ繝ｪ繧｢ */
 .add-task-form {
   padding: 20px;
   display: flex;
@@ -181,7 +181,7 @@ header h1 {
   filter: brightness(1.05);
 }
 
-/* TODOリスト */
+/* TODO繝ｪ繧ｹ繝� */
 .todo-list {
   flex: 1;
   overflow-y: auto;
@@ -191,7 +191,7 @@ header h1 {
   gap: 10px;
 }
 
-/* スクロールバーのスタイル */
+/* 繧ｹ繧ｯ繝ｭ繝ｼ繝ｫ繝舌�縺ｮ繧ｹ繧ｿ繧､繝ｫ */
 .todo-list::-webkit-scrollbar {
   width: 8px;
 }
@@ -350,7 +350,7 @@ header h1 {
   border: 1px solid var(--primary-light);
 }
 
-/* フッター */
+/* 繝輔ャ繧ｿ繝ｼ */
 footer {
   padding: 16px;
   text-align: center;
@@ -367,7 +367,7 @@ footer {
   opacity: 0.8;
 }
 
-/* その他スタイル */
+/* 縺昴�莉悶せ繧ｿ繧､繝ｫ */
 .spinner {
   width: 32px;
   height: 32px;
@@ -413,7 +413,7 @@ footer {
   border-radius: 10px;
 }
 
-/* モーダル */
+/* 繝｢繝ｼ繝繝ｫ */
 .modal {
   display: none;
   position: fixed;
@@ -495,7 +495,7 @@ footer {
   transform: translateY(-1px);
 }
 
-/* タグチェックボックス */
+/* 繧ｿ繧ｰ繝√ぉ繝�け繝懊ャ繧ｯ繧ｹ */
 #tagCheckboxes {
   display: flex;
   flex-direction: column;
@@ -529,7 +529,7 @@ footer {
   accent-color: var(--primary);
 }
 
-/* インタラクティブ要素 */
+/* 繧､繝ｳ繧ｿ繝ｩ繧ｯ繝�ぅ繝冶ｦ∫ｴ� */
 .due-date,
 .tag {
   cursor: pointer;
@@ -560,39 +560,148 @@ footer {
   transform: scale(1.05);
 }
 
-/* フェードアウトアニメーション */
+/* 繝輔ぉ繝ｼ繝峨い繧ｦ繝医い繝九Γ繝ｼ繧ｷ繝ｧ繝ｳ */
 .todo-item.fade-out {
-  opacity: 0;
-  transform: translateX(-20px);
-  transition: all 0.4s ease;
-}
-
-/* Google Tasksセクション */
-.google-tasks-section {
-  padding: 12px 16px;
-  background: white;
-  border-top: 1px solid #f1f5f9;
-}
-
-.btn-google-tasks {
-  width: 100%;
-  padding: 12px;
-  background: linear-gradient(135deg, #4285f4 0%, #34a853 100%);
-  color: white;
-  border: none;
-  border-radius: 10px;
+  border-radius: 8px;
+  margin-bottom: 16px;
   font-size: 13px;
+  display: none;
+  animation: slideIn 0.3s ease-out;
+}
+
+.success-message {
+  padding: 12px;
+  background-color: #d1fae5;
+  color: #065f46;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 13px; /* Fixed syntax error here */
+  display: none;
+  animation: slideIn 0.3s ease-out;
+}
+/* DBコントロール */
+.db-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.db-select {
+  flex: 1;
+}
+
+/* トグルスイッチ */
+.toggle-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.toggle-switch:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.toggle-switch input {
+  display: none;
+}
+
+.toggle-switch .slider {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 20px;
+  transition: 0.3s;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.toggle-switch .slider:before {
+  content: "";
+  position: absolute;
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 2px;
+  background-color: white;
+  border-radius: 50%;
+  transition: 0.3s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+}
+
+.toggle-switch input:checked + .slider {
+  background-color: var(--accent);
+  border-color: rgba(255,255,255,0.5);
+}
+
+.toggle-switch input:checked + .slider:before {
+  transform: translateX(16px);
+}
+
+.label-text {
+  font-size: 11px;
   font-weight: 700;
+  color: white;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* タスクアクションボタン (修復) */
+.task-action-btn {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(66, 133, 244, 0.3);
+  color: #6b7280;
+  margin-left: auto;
 }
 
-.btn-google-tasks:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(66, 133, 244, 0.4);
+.task-action-btn:hover {
+  background: #e5e7eb;
+  color: var(--primary);
+  border-color: var(--primary-light);
+  transform: translateY(-1px);
 }
 
-.btn-google-tasks:active {
+
+.task-action-btn:active {
   transform: translateY(0);
+}
+
+/* リレーションタグ */
+.relation-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.relation-tag:hover {
+  background: #dbeafe;
+  color: #1e3a8a;
+  transform: scale(1.05);
 }

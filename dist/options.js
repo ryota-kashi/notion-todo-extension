@@ -3,14 +3,12 @@
 const elements = {
   apiKey: document.getElementById('apiKey'),
   saveApiKeyBtn: document.getElementById('saveApiKeyBtn'),
+
   dbName: document.getElementById('dbName'),
   databaseId: document.getElementById('databaseId'),
   addDbBtn: document.getElementById('addDbBtn'),
   dbList: document.getElementById('dbList'),
   saveMessage: document.getElementById('saveMessage'),
-  googleAuthStatus: document.getElementById('googleAuthStatus'),
-  googleAuthBtn: document.getElementById('googleAuthBtn'),
-  googleSignOutBtn: document.getElementById('googleSignOutBtn')
 };
 
 let databases = [];
@@ -23,6 +21,8 @@ async function init() {
     if (result.notionApiKey) {
       elements.apiKey.value = result.notionApiKey;
     }
+
+
 
     // データベースリストの読み込み
     if (result.notionDatabases) {
@@ -39,9 +39,11 @@ async function init() {
     renderDbList();
   });
   
-  // Google認証状態を確認
-  checkGoogleAuth();
 }
+
+
+
+
 
 // APIキーのみ保存
 function saveApiKey() {
@@ -159,55 +161,6 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// ========== Google認証機能 ==========
-
-// Google認証状態を確認
-async function checkGoogleAuth() {
-  const result = await chrome.storage.sync.get(['googleAccessToken']);
-  const isAuthenticated = !!result.googleAccessToken;
-  
-  if (isAuthenticated) {
-    elements.googleAuthStatus.textContent = '✅ 認証済み';
-    elements.googleAuthStatus.className = 'auth-status authenticated';
-    elements.googleAuthBtn.style.display = 'none';
-    elements.googleSignOutBtn.style.display = 'inline-block';
-  } else {
-    elements.googleAuthStatus.textContent = '❌ 未認証';
-    elements.googleAuthStatus.className = 'auth-status';
-    elements.googleAuthBtn.style.display = 'inline-block';
-    elements.googleSignOutBtn.style.display = 'none';
-  }
-}
-
-// Google認証を実行
-async function authenticateGoogle() {
-  try {
-    const token = await chrome.identity.getAuthToken({ 
-      interactive: true,
-      scopes: ['https://www.googleapis.com/auth/tasks']
-    });
-    await chrome.storage.sync.set({ googleAccessToken: token });
-    showMessage('✓ Google認証に成功しました', 'success');
-    checkGoogleAuth();
-  } catch (error) {
-    showMessage(`認証エラー: ${error.message}`, 'error');
-  }
-}
-
-// 認証解除
-async function signOutGoogle() {
-  try {
-    const result = await chrome.storage.sync.get(['googleAccessToken']);
-    if (result.googleAccessToken) {
-      await chrome.identity.removeCachedAuthToken({ token: result.googleAccessToken });
-    }
-    await chrome.storage.sync.remove(['googleAccessToken']);
-    showMessage('✓ 認証を解除しました', 'success');
-    checkGoogleAuth();
-  } catch (error) {
-    showMessage(`エラー: ${error.message}`, 'error');
-  }
-}
 
 // ========== DB編集機能 ==========
 
@@ -253,11 +206,9 @@ function closeEditDbModal() {
 
 // イベントリスナー
 elements.saveApiKeyBtn.addEventListener('click', saveApiKey);
+
 elements.addDbBtn.addEventListener('click', addDatabase);
 
-// Google認証
-elements.googleAuthBtn.addEventListener('click', authenticateGoogle);
-elements.googleSignOutBtn.addEventListener('click', signOutGoogle);
 
 // DB編集モーダル
 document.getElementById('saveEditDbBtn').addEventListener('click', saveEditDb);
