@@ -13,29 +13,44 @@ let titlePropertyName = ""; // 後方互換性のため維持(後で削除or更�
 
 
 // ロールアップから値を抽出するヘルパー
+// ロールアップから値を抽出するヘルパー
 function getRollupValue(rollup) {
   if (!rollup) return null;
-  
+
+  // 配列型の処理 (show_originalの場合など)
   if (rollup.type === "array") {
-    // 配列内の各要素から値を抽出して結合
     return rollup.array.map(item => {
       if (item.type === "title" && item.title) return item.title.map(t => t.plain_text).join("");
       if (item.type === "rich_text" && item.rich_text) return item.rich_text.map(t => t.plain_text).join("");
       if (item.type === "people" && item.people) return item.people.name || "User";
       if (item.type === "select" && item.select) return item.select.name;
       if (item.type === "multi_select" && item.multi_select) return item.multi_select.map(o => o.name).join(", ");
+      if (item.type === "status" && item.status) return item.status.name;
       if (item.type === "date" && item.date) return formatDate(item.date.start);
-      if (item.type === "number" && item.number) return item.number;
+      if (item.type === "number" && item.number !== null) return item.number;
       if (item.type === "url" && item.url) return item.url;
       if (item.type === "email" && item.email) return item.email;
       if (item.type === "phone_number" && item.phone_number) return item.phone_number;
+      if (item.type === "checkbox") return item.checkbox ? "✅" : "⬜";
+      if (item.type === "files" && item.files) return item.files.length > 0 ? "📎" : "";
+      
+      // Formulaの処理
+      if (item.type === "formula" && item.formula) {
+        if (item.formula.type === "string") return item.formula.string;
+        if (item.formula.type === "number") return item.formula.number;
+        if (item.formula.type === "boolean") return item.formula.boolean;
+        if (item.formula.type === "date") return formatDate(item.formula.date.start);
+      }
+      
       return "";
-    }).filter(v => v !== "").join(", ");
+    }).filter(v => v !== "" && v !== null && v !== undefined).join(", ");
   }
-  
+
+  // 単一値の処理 (計算結果など)
   if (rollup.type === "date" && rollup.date) return formatDate(rollup.date.start);
-  if (rollup.type === "number" && rollup.number) return rollup.number;
-  
+  if (rollup.type === "number" && rollup.number !== null) return rollup.number;
+  if (rollup.type === "incomplete") return null; // 計算中の場合など
+
   return null;
 }
 
@@ -460,7 +475,7 @@ function createTodoElement(todo) {
       properties[propName] = { type: 'url', value: prop.url };
     } else if (prop.type === 'rollup' && prop.rollup) {
       const value = getRollupValue(prop.rollup);
-      if (value) {
+      if (value !== null && value !== undefined && value !== "") {
         properties[propName] = { type: 'rollup', value: value };
       }
     } else if (prop.type === 'checkbox') {
