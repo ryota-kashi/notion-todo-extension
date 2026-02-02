@@ -23,7 +23,6 @@ const elements = {
   newTaskInput: document.getElementById("newTaskInput"),
   addTaskBtn: document.getElementById("addTaskBtn"),
   dbSelector: document.getElementById("dbSelector"),
-  showAllDbToggle: document.getElementById("showAllDbToggle"),
 };
 
 // 初期化
@@ -46,9 +45,12 @@ async function init() {
     if (savedId && config.databases.find((db) => db.id === savedId)) {
       config.activeDatabaseId = savedId;
       elements.dbSelector.value = savedId;
+      showAllDatabases = false;
     } else {
+      // 保存されたIDがない場合は最初のDBを選択
       config.activeDatabaseId = config.databases[0].id;
       elements.dbSelector.value = config.databases[0].id;
+      showAllDatabases = false;
     }
 
     hideSetupMessage();
@@ -59,6 +61,14 @@ async function init() {
 // セレクターUIの描画
 function renderDbSelector() {
   elements.dbSelector.innerHTML = "";
+  
+  // 「すべて表示」オプションを追加
+  const allOption = document.createElement("option");
+  allOption.value = "__ALL__";
+  allOption.textContent = "📋 すべて表示";
+  elements.dbSelector.appendChild(allOption);
+  
+  // 各データベースのオプションを追加
   config.databases.forEach((db) => {
     const option = document.createElement("option");
     option.value = db.id;
@@ -70,20 +80,18 @@ function renderDbSelector() {
 // DB切り替えイベント
 elements.dbSelector.addEventListener("change", async (e) => {
   const newId = e.target.value;
-  config.activeDatabaseId = newId;
-  titlePropertyName = ""; // キャッシュをクリア
-  // databaseSchema = null; // 廃止
-  chrome.storage.sync.set({ activeDatabaseId: newId });
-  if (!showAllDatabases) {
-    await loadTodos();
+  
+  // 「すべて表示」が選択された場合
+  if (newId === "__ALL__") {
+    showAllDatabases = true;
+    config.activeDatabaseId = ""; // アクティブDBをクリア
+  } else {
+    showAllDatabases = false;
+    config.activeDatabaseId = newId;
+    chrome.storage.sync.set({ activeDatabaseId: newId });
   }
-});
-
-// 全DB表示トグルイベント
-elements.showAllDbToggle.addEventListener("change", async (e) => {
-  showAllDatabases = e.target.checked;
-  // トグル変更時はactiveDatabaseIdは変更しないが、表示モードが変わる
-  elements.dbSelector.disabled = showAllDatabases;
+  
+  titlePropertyName = ""; // キャッシュをクリア
   await loadTodos();
 });
 
@@ -364,45 +372,90 @@ function createTodoElement(todo) {
     div.classList.add("completed");
   }
 
-  // 期限を取得
-  const dueDate = getTodoDueDate(todo);
-
-  // タグを取得
-  const tags = getTodoTags(todo);
+  // このTODOが属するデータベースの表示設定を取得
+  const dbId = todo.parent.database_id;
+  const db = config.databases.find(d => d.id === dbId);
   
-  // リレーションを取得
-  const relations = getTodoRelations(todo);
+  // visiblePropertiesを取得(後方互換性のため、displaySettingsも考慮)
+  let visibleProperties = db?.visibleProperties;
+  
+  // 後方互換性: displaySettingsが存在する場合は全プロパティを表示
+  if (!visibleProperties && db?.displaySettings) {
+    visibleProperties = null; // nullの場合は全プロパティ表示
+  }
+  
+  // プロパティが表示可能かチェックする関数
+  const isPropertyVisible = (propName) => {
+    if (!visibleProperties) return true; // 設定がない場合は全表示
+    return visibleProperties.includes(propName);
+  };
+
+  // 各プロパティを取得(プロパティ名も一緒に)
+  const properties = {};
+  
+  for (const [propName, prop] of Object.entries(todo.properties)) {
+    if (prop.type === 'date' && prop.date) {
+      properties[propName] = { type: 'date', value: prop.date.start };
+    } else if ((prop.type === 'multi_select' || prop.type === 'select') && (prop.multi_select || prop.select)) {
+      const tags = prop.type === 'multi_select' 
+        ? prop.multi_select.map(t => t.name)
+        : [prop.select.name];
+      properties[propName] = { type: 'tags', value: tags };
+    } else if (prop.type === 'relation' && prop.relation) {
+      properties[propName] = { type: 'relation', value: prop.relation.map(r => r.id) };
+    } else if (prop.type === 'rich_text' && prop.rich_text && prop.rich_text.length > 0) {
+      properties[propName] = { type: 'rich_text', value: prop.rich_text[0].plain_text };
+    } else if (prop.type === 'number' && prop.number !== null) {
+      properties[propName] = { type: 'number', value: prop.number };
+    } else if (prop.type === 'people' && prop.people && prop.people.length > 0) {
+      const people = prop.people.map(p => p.name || p.email || "Unknown");
+      properties[propName] = { type: 'people', value: people };
+    } else if (prop.type === 'url' && prop.url) {
+      properties[propName] = { type: 'url', value: prop.url };
+    } else if (prop.type === 'checkbox' && !['Done', '完了', 'Completed'].includes(propName)) {
+      if (prop.checkbox) {
+        properties[propName] = { type: 'checkbox', value: true };
+      }
+    }
+  }
 
   // メタ情報のHTML
   let metaHtml = "";
-  if (dueDate || tags.length > 0 || relations.length > 0 || true) { // 常にメタエリアを表示
+  if (Object.keys(properties).length > 0 || true) {
     metaHtml = '<div class="todo-meta">';
 
-    if (dueDate) {
-      const isOverdue = new Date(dueDate) < new Date() && !isCompleted;
-      const dueDateClass = isOverdue ? "due-date overdue" : "due-date";
-      metaHtml += `<span class="${dueDateClass}" data-edit-type="duedate">📅 ${formatDate(dueDate)}</span>`;
-    } else {
-      // 期日がない場合は「+ 期日」ボタンを表示
-      metaHtml += '<span class="add-tag-btn" data-edit-type="duedate">+ 期日</span>';
+    // 各プロパティを表示
+    for (const [propName, propData] of Object.entries(properties)) {
+      if (!isPropertyVisible(propName)) continue;
+      
+      if (propData.type === 'date') {
+        const isOverdue = new Date(propData.value) < new Date() && !isCompleted;
+        const dueDateClass = isOverdue ? "due-date overdue" : "due-date";
+        metaHtml += `<span class="${dueDateClass}" data-edit-type="duedate">📅 ${formatDate(propData.value)}</span>`;
+      } else if (propData.type === 'tags') {
+        propData.value.forEach((tag) => {
+          metaHtml += `<span class="tag" data-edit-type="tag">${tag}</span>`;
+        });
+      } else if (propData.type === 'relation') {
+        propData.value.forEach((relId) => {
+          const cached = pageTitleCache[relId] || "...";
+          metaHtml += `<span class="relation-tag" data-rel-id="${relId}">${escapeHtml(cached)}</span>`;
+        });
+      } else if (propData.type === 'rich_text') {
+        metaHtml += `<span class="rich-text-tag">📝 ${escapeHtml(propData.value)}</span>`;
+      } else if (propData.type === 'number') {
+        metaHtml += `<span class="number-tag">🔢 ${propData.value}</span>`;
+      } else if (propData.type === 'people') {
+        propData.value.forEach((person) => {
+          metaHtml += `<span class="people-tag">👤 ${escapeHtml(person)}</span>`;
+        });
+      } else if (propData.type === 'url') {
+        const shortUrl = propData.value.length > 30 ? propData.value.substring(0, 30) + "..." : propData.value;
+        metaHtml += `<a href="${propData.value}" target="_blank" class="url-tag" title="${propData.value}">📎 ${escapeHtml(shortUrl)}</a>`;
+      } else if (propData.type === 'checkbox') {
+        metaHtml += `<span class="checkbox-tag">✅ ${escapeHtml(propName)}</span>`;
+      }
     }
-
-    // リレーション表示
-    if (relations.length > 0) {
-      relations.forEach((relId) => {
-        const cached = pageTitleCache[relId] || "...";
-        metaHtml += `<span class="relation-tag" data-rel-id="${relId}">${escapeHtml(cached)}</span>`;
-      });
-    }
-
-    if (tags.length > 0) {
-      tags.forEach((tag) => {
-        metaHtml += `<span class="tag" data-edit-type="tag">${tag}</span>`;
-      });
-    }
-    
-    // タグ編集ボタン
-    metaHtml += '<span class="add-tag-btn" data-edit-type="tag">+ タグ</span>';
 
     metaHtml += "</div>";
   }
@@ -641,6 +694,63 @@ function getTodoTags(todo) {
   }
 
   return allTags;
+}
+
+// リッチテキストを取得
+function getTodoRichText(todo) {
+  for (const prop of Object.values(todo.properties)) {
+    if (prop.type === "rich_text" && prop.rich_text && prop.rich_text.length > 0) {
+      return prop.rich_text[0].plain_text;
+    }
+  }
+  return null;
+}
+
+// 数値を取得
+function getTodoNumber(todo) {
+  for (const prop of Object.values(todo.properties)) {
+    if (prop.type === "number" && prop.number !== null) {
+      return prop.number;
+    }
+  }
+  return null;
+}
+
+// 担当者を取得
+function getTodoPeople(todo) {
+  const people = [];
+  for (const prop of Object.values(todo.properties)) {
+    if (prop.type === "people" && prop.people) {
+      prop.people.forEach((person) => {
+        people.push(person.name || person.email || "Unknown");
+      });
+    }
+  }
+  return people;
+}
+
+// URLを取得
+function getTodoUrl(todo) {
+  for (const prop of Object.values(todo.properties)) {
+    if (prop.type === "url" && prop.url) {
+      return prop.url;
+    }
+  }
+  return null;
+}
+
+// チェックボックスを取得（完了状態以外のチェックボックス）
+function getTodoCheckboxes(todo) {
+  const checkboxes = [];
+  for (const [name, prop] of Object.entries(todo.properties)) {
+    // 完了状態として使われているチェックボックスは除外
+    if (prop.type === "checkbox" && !["Done", "完了", "Completed"].includes(name)) {
+      if (prop.checkbox) {
+        checkboxes.push(name);
+      }
+    }
+  }
+  return checkboxes;
 }
 
 // 日付をフォーマット

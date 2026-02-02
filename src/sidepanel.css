@@ -705,3 +705,81 @@ footer {
   color: #1e3a8a;
   transform: scale(1.05);
 }
+
+/* 新しいプロパティタイプのスタイル */
+.rich-text-tag,
+.number-tag,
+.people-tag,
+.url-tag,
+.checkbox-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.rich-text-tag {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.rich-text-tag:hover {
+  background: #fde68a;
+  transform: scale(1.05);
+}
+
+.number-tag {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+.number-tag:hover {
+  background: #c7d2fe;
+  transform: scale(1.05);
+}
+
+.people-tag {
+  background: #fce7f3;
+  color: #9f1239;
+  border: 1px solid #fbcfe8;
+}
+
+.people-tag:hover {
+  background: #fbcfe8;
+  transform: scale(1.05);
+}
+
+.url-tag {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.url-tag:hover {
+  background: #bfdbfe;
+  color: #1e3a8a;
+  transform: scale(1.05);
+}
+
+.checkbox-tag {
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.checkbox-tag:hover {
+  background: #a7f3d0;
+  transform: scale(1.05);
+}

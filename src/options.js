@@ -62,8 +62,47 @@ function saveApiKey() {
   });
 }
 
+// データベーススキーマを取得
+async function fetchDatabaseSchema(databaseId) {
+  const apiKey = elements.apiKey.value.trim();
+  if (!apiKey) {
+    throw new Error('APIキーが設定されていません');
+  }
+
+  try {
+    const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`スキーマ取得失敗: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const schema = {};
+    
+    // プロパティ情報を整形
+    for (const [name, prop] of Object.entries(data.properties)) {
+      schema[name] = {
+        type: prop.type,
+        id: prop.id
+      };
+    }
+    
+    return schema;
+  } catch (error) {
+    console.error('スキーマ取得エラー:', error);
+    throw error;
+  }
+}
+
 // 新しいデータベースを追加
-function addDatabase() {
+async function addDatabase() {
   const name = elements.dbName.value.trim();
   let id = elements.databaseId.value.trim();
 
@@ -85,13 +124,29 @@ function addDatabase() {
     return;
   }
 
-  databases.push({ id: cleanId, name: name });
-  saveToStorage();
-  
-  elements.dbName.value = '';
-  elements.databaseId.value = '';
-  renderDbList();
-  showMessage('✓ データベースを追加しました', 'success');
+  // スキーマを取得
+  showMessage('スキーマを取得中...', 'success');
+  try {
+    const schema = await fetchDatabaseSchema(cleanId);
+    
+    // すべてのプロパティをデフォルトで表示
+    const visibleProperties = Object.keys(schema);
+    
+    databases.push({ 
+      id: cleanId, 
+      name: name,
+      schema: schema,
+      visibleProperties: visibleProperties
+    });
+    saveToStorage();
+    
+    elements.dbName.value = '';
+    elements.databaseId.value = '';
+    renderDbList();
+    showMessage('✓ データベースを追加しました', 'success');
+  } catch (error) {
+    showMessage(`エラー: ${error.message}`, 'error');
+  }
 }
 
 // データベースを削除
@@ -165,13 +220,77 @@ function escapeHtml(text) {
 // ========== DB編集機能 ==========
 
 // DB編集モーダルを開く
-function openEditDbModal(index) {
+async function openEditDbModal(index) {
   editingDbIndex = index;
   const db = databases[index];
   
   document.getElementById('editDbName').value = db.name;
   document.getElementById('editDbId').value = db.id;
+  
+  // スキーマがない場合は取得
+  if (!db.schema) {
+    try {
+      showMessage('スキーマを取得中...', 'success');
+      db.schema = await fetchDatabaseSchema(db.id);
+      db.visibleProperties = Object.keys(db.schema); // デフォルトで全表示
+      saveToStorage();
+    } catch (error) {
+      showMessage(`エラー: ${error.message}`, 'error');
+      return;
+    }
+  }
+  
+  // プロパティチェックボックスを動的に生成
+  const container = document.getElementById('propertyCheckboxes');
+  container.innerHTML = '';
+  
+  const visibleProps = db.visibleProperties || Object.keys(db.schema);
+  
+  for (const [propName, propInfo] of Object.entries(db.schema)) {
+    const label = document.createElement('label');
+    label.className = 'checkbox-label';
+    
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.value = propName;
+    checkbox.checked = visibleProps.includes(propName);
+    
+    const span = document.createElement('span');
+    span.textContent = `${getPropertyIcon(propInfo.type)} ${propName}`;
+    
+    label.appendChild(checkbox);
+    label.appendChild(span);
+    container.appendChild(label);
+  }
+  
   document.getElementById('editDbModal').style.display = 'flex';
+}
+
+// プロパティタイプに応じたアイコンを取得
+function getPropertyIcon(type) {
+  const icons = {
+    'title': '📌',
+    'rich_text': '📝',
+    'number': '🔢',
+    'select': '🏷️',
+    'multi_select': '🏷️',
+    'date': '📅',
+    'people': '👤',
+    'files': '📎',
+    'checkbox': '✅',
+    'url': '🔗',
+    'email': '📧',
+    'phone_number': '📞',
+    'formula': '🧮',
+    'relation': '🔗',
+    'rollup': '📊',
+    'created_time': '🕐',
+    'created_by': '👤',
+    'last_edited_time': '🕐',
+    'last_edited_by': '👤',
+    'status': '📊'
+  };
+  return icons[type] || '📄';
 }
 
 // DB編集を保存
@@ -191,7 +310,24 @@ async function saveEditDb() {
     return;
   }
   
-  databases[editingDbIndex] = { id: cleanId, name: newName };
+  // チェックされたプロパティを取得
+  const container = document.getElementById('propertyCheckboxes');
+  const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+  const visibleProperties = [];
+  
+  checkboxes.forEach(checkbox => {
+    if (checkbox.checked) {
+      visibleProperties.push(checkbox.value);
+    }
+  });
+  
+  const db = databases[editingDbIndex];
+  databases[editingDbIndex] = { 
+    id: cleanId, 
+    name: newName,
+    schema: db.schema,
+    visibleProperties: visibleProperties
+  };
   saveToStorage();
   
   closeEditDbModal();
