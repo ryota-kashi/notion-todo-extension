@@ -84,7 +84,7 @@ async function init() {
   renderDbSelector();
 
   // 前回の選択を復元
-  chrome.storage.sync.get(["activeDatabaseId"], async (save) => {
+  chrome.storage.local.get(["activeDatabaseId"], async (save) => {
     const savedId = save.activeDatabaseId;
     if (savedId && config.databases.find((db) => db.id === savedId)) {
       config.activeDatabaseId = savedId;
@@ -132,7 +132,7 @@ elements.dbSelector.addEventListener("change", async (e) => {
   } else {
     showAllDatabases = false;
     config.activeDatabaseId = newId;
-    chrome.storage.sync.set({ activeDatabaseId: newId });
+    chrome.storage.local.set({ activeDatabaseId: newId });
   }
   
   titlePropertyName = ""; // キャッシュをクリア
@@ -142,7 +142,7 @@ elements.dbSelector.addEventListener("change", async (e) => {
 // 設定を読み込む
 async function loadConfig() {
   return new Promise((resolve) => {
-    chrome.storage.sync.get(
+    chrome.storage.local.get(
       ["notionApiKey", "notionDatabases", "notionDatabaseId"],
       (result) => {
         let databases = result.notionDatabases || [];
@@ -276,7 +276,7 @@ async function getDatabaseSchema(dbId) {
 async function loadTodos() {
   // 設定を最新化 (syncストレージから読み込み)
   await new Promise((resolve) => {
-    chrome.storage.sync.get(['notionApiKey', 'notionDatabases', 'notionActiveDatabaseId'], (result) => {
+    chrome.storage.local.get(['notionApiKey', 'notionDatabases', 'notionActiveDatabaseId'], (result) => {
       if (result.notionApiKey) config.apiKey = result.notionApiKey;
       if (result.notionDatabases) config.databases = result.notionDatabases;
       // アクティブDBのIDが未設定ならロードしたものを使う

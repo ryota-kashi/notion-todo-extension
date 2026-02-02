@@ -16,7 +16,7 @@ let editingDbIndex = null;
 
 // 初期化: 保存済みの設定を読み込む
 async function init() {
-  chrome.storage.sync.get(['notionApiKey', 'notionDatabases', 'notionDatabaseId'], (result) => {
+  chrome.storage.local.get(['notionApiKey', 'notionDatabases', 'notionDatabaseId'], (result) => {
     // APIキーの読み込み
     if (result.notionApiKey) {
       elements.apiKey.value = result.notionApiKey;
@@ -57,7 +57,7 @@ function saveApiKey() {
     return;
   }
 
-  chrome.storage.sync.set({ notionApiKey: apiKey }, () => {
+  chrome.storage.local.set({ notionApiKey: apiKey }, () => {
     showMessage('✓ APIキーを保存しました', 'success');
   });
 }
@@ -189,7 +189,7 @@ function deleteDb(index) {
 
 // ストレージに保存
 function saveToStorage() {
-  chrome.storage.sync.set({ notionDatabases: databases });
+  chrome.storage.local.set({ notionDatabases: databases });
 }
 
 // データベースリストをUIに表示
