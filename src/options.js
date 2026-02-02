@@ -290,9 +290,16 @@ function renderFilters(db) {
 
 // フィルター行を追加
 function addFilterRow(db, filterData = null) {
-  const container = document.getElementById('filterList');
-  const row = document.createElement('div');
-  row.className = 'filter-item';
+  try {
+    const container = document.getElementById('filterList');
+    
+    if (!db || !db.schema) {
+      alert('⚠️ データベースのスキーマ情報が見つかりません。\n右上の「🔄 更新」ボタンを押してみてください。');
+      return;
+    }
+
+    const row = document.createElement('div');
+    row.className = 'filter-item';
   
   // フィルタリング可能なプロパティを抽出
   const filterableProps = Object.entries(db.schema).filter(([name, prop]) => {
@@ -385,7 +392,17 @@ function addFilterRow(db, filterData = null) {
       input = document.createElement('input');
       input.type = 'text';
       input.className = 'filter-value-input';
-      input.placeholder = '値を入力';
+      
+      // スキーマ情報不足の場合（Select/Statusなのに選択肢がない）
+      if (['select', 'multi_select', 'status'].includes(prop.type)) {
+        input.placeholder = '⚠️ 最新の選択肢を取得するには「🔄 更新」ボタンを押してください';
+        input.style.borderColor = '#fca5a5';
+        input.style.backgroundColor = '#fef2f2';
+        input.title = '選択肢情報がありません。右上の「更新」ボタンを押してデータベース情報を更新してください。';
+      } else {
+        input.placeholder = '値を入力';
+      }
+      
       if (filterData && filterData.property === propName) input.value = filterData.value;
     }
     
@@ -405,6 +422,10 @@ function addFilterRow(db, filterData = null) {
   row.appendChild(valueContainer);
   row.appendChild(deleteBtn);
   container.appendChild(row);
+  } catch (e) {
+    console.error('Filter Error:', e);
+    alert('フィルター追加中にエラーが発生しました:\n' + e.message);
+  }
 }
 
 // スキーマを強制更新
