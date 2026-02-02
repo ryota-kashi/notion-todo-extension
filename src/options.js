@@ -241,6 +241,7 @@ async function openEditDbModal(index) {
   }
   
   renderPropertyCheckboxes(db);
+  renderFilters(db);
   
   document.getElementById('editDbModal').style.display = 'flex';
   document.body.style.overflow = 'hidden'; // 背景スクロール禁止
@@ -267,8 +268,72 @@ function renderPropertyCheckboxes(db) {
     
     label.appendChild(checkbox);
     label.appendChild(span);
+    label.appendChild(span);
     container.appendChild(label);
   }
+}
+
+// フィルター設定を描画
+function renderFilters(db) {
+  const container = document.getElementById('filterList');
+  container.innerHTML = '';
+  
+  if (db.filters && Array.isArray(db.filters)) {
+    db.filters.forEach(filter => {
+      addFilterRow(db, filter);
+    });
+  }
+}
+
+// フィルター行を追加
+function addFilterRow(db, filterData = null) {
+  const container = document.getElementById('filterList');
+  const row = document.createElement('div');
+  row.className = 'filter-item';
+  
+  // フィルタリング可能なプロパティを抽出
+  const filterableProps = Object.entries(db.schema).filter(([name, prop]) => {
+    return ['select', 'multi_select', 'status', 'checkbox'].includes(prop.type);
+  });
+  
+  if (filterableProps.length === 0) {
+    row.textContent = 'フィルタリング可能なプロパティがありません';
+    container.appendChild(row);
+    return;
+  }
+  
+  // プロパティ選択
+  const select = document.createElement('select');
+  filterableProps.forEach(([name, prop]) => {
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    option.dataset.type = prop.type; // 型を記憶
+    if (filterData && filterData.property === name) {
+      option.selected = true;
+    }
+    select.appendChild(option);
+  });
+  
+  // 値入力
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '値を入力 (完全一致)';
+  if (filterData) input.value = filterData.value;
+  
+  // 削除ボタン
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'delete-filter-btn';
+  deleteBtn.innerHTML = '🗑️';
+  deleteBtn.title = '削除';
+  deleteBtn.addEventListener('click', () => {
+    row.remove();
+  });
+  
+  row.appendChild(select);
+  row.appendChild(input);
+  row.appendChild(deleteBtn);
+  container.appendChild(row);
 }
 
 // スキーマを強制更新
@@ -331,6 +396,28 @@ function getPropertyIcon(type) {
   return icons[type] || '📄';
 }
 
+// フィルター設定をUIから取得
+function getFiltersFromUI() {
+  const filters = [];
+  const container = document.getElementById('filterList');
+  if (!container) return filters;
+  
+  const filterRows = container.querySelectorAll('.filter-item');
+  filterRows.forEach(row => {
+    const select = row.querySelector('select');
+    const input = row.querySelector('input');
+    if (select && input && input.value.trim() !== "") {
+      const option = select.options[select.selectedIndex];
+      filters.push({
+        property: select.value,
+        type: option.dataset.type,
+        value: input.value.trim()
+      });
+    }
+  });
+  return filters;
+}
+
 // DB編集を保存
 async function saveEditDb() {
   const newName = document.getElementById('editDbName').value.trim();
@@ -364,7 +451,8 @@ async function saveEditDb() {
     id: cleanId, 
     name: newName,
     schema: db.schema,
-    visibleProperties: visibleProperties
+    visibleProperties: visibleProperties,
+    filters: getFiltersFromUI()
   };
   saveToStorage();
   
@@ -379,10 +467,15 @@ function closeEditDbModal() {
   document.body.style.overflow = ''; // 背景スクロール解除
 }
 
-// イベントリスナー
+  // イベントリスナー
 elements.saveApiKeyBtn.addEventListener('click', saveApiKey);
 elements.addDbBtn.addEventListener('click', addDatabase);
 document.getElementById('refreshSchemaBtn').addEventListener('click', refreshSchema);
+document.getElementById('addFilterBtn').addEventListener('click', () => {
+  if (editingDbIndex !== null) {
+    addFilterRow(databases[editingDbIndex]);
+  }
+});
 
 
 // DB編集モーダル

@@ -316,11 +316,25 @@ async function loadTodos() {
     todos = allTodos.sort((a, b) => {
       const aDone = getTodoStatus(a);
       const bDone = getTodoStatus(b);
-      if (aDone === bDone) {
-          // 作成日時でソート (新しい順)
-          return new Date(b.created_time) - new Date(a.created_time);
+      
+      // 1. 完了状態でソート (未完了が先)
+      if (aDone !== bDone) {
+        return aDone ? 1 : -1;
       }
-      return aDone ? 1 : -1;
+      
+      // 2. 期限でソート (近い順)
+      const aDate = getTodoDueDate(a);
+      const bDate = getTodoDueDate(b);
+      
+      if (aDate && bDate) {
+        // 日付文字列同士の比較でもよいが、Dateオブジェクトにして差分を取るのが確実
+        return new Date(aDate) - new Date(bDate);
+      }
+      if (aDate) return -1; // 期限ありを優先(上へ)
+      if (bDate) return 1;
+      
+      // 3. 作成日時でソート (新しい順)
+      return new Date(b.created_time) - new Date(a.created_time);
     });
 
     hideLoading();
@@ -335,6 +349,23 @@ async function loadTodos() {
 // 単一DBからTODOを取得
 async function fetchTodosFromDb(dbId) {
   try {
+    // フィルターの構築
+    const dbConfig = config.databases.find(d => d.id.replace(/-/g, '') === dbId.replace(/-/g, ''));
+    const filter = dbConfig ? buildNotionFilter(dbConfig) : undefined;
+    
+    const requestBody = {
+      sorts: [
+        {
+          timestamp: "created_time",
+          direction: "descending",
+        },
+      ],
+    };
+    
+    if (filter) {
+      requestBody.filter = filter;
+    }
+
     const response = await fetch(
       `https://api.notion.com/v1/databases/${dbId}/query`,
       {
@@ -344,14 +375,7 @@ async function fetchTodosFromDb(dbId) {
           "Notion-Version": "2022-06-28",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          sorts: [
-            {
-              timestamp: "created_time",
-              direction: "descending",
-            },
-          ],
-        }),
+        body: JSON.stringify(requestBody),
       },
     );
 
@@ -1312,6 +1336,24 @@ document.getElementById('tagModal').addEventListener('click', (e) => {
 });
 
 
+
+// Notion API用のフィルターオブジェクトを構築
+function buildNotionFilter(db) {
+  if (!db.filters || db.filters.length === 0) return undefined;
+  
+  const conditions = db.filters.map(f => {
+    if (f.type === 'status') return { property: f.property, status: { equals: f.value } };
+    if (f.type === 'select') return { property: f.property, select: { equals: f.value } };
+    if (f.type === 'multi_select') return { property: f.property, multi_select: { contains: f.value } };
+    if (f.type === 'checkbox') return { property: f.property, checkbox: { equals: f.value.toLowerCase() === 'true' } };
+    return null;
+  }).filter(c => c !== null);
+  
+  if (conditions.length === 0) return undefined;
+  if (conditions.length === 1) return conditions[0];
+  
+  return { and: conditions };
+}
 
 // 初期化実行
 init();
