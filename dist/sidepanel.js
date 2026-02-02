@@ -10,55 +10,7 @@ let showAllDatabases = false;
 const databaseSchemas = {};
 let titlePropertyName = ""; // 後方互換性のため維持(後で削除or更新)
 
-// キャッシュ
-// キャッシュ
-const userCache = {};
-const pendingUserRequests = {};
 
-// ユーザー情報を取得（キャッシュ対応・重複排除）
-async function fetchUserProfile(userId) {
-  if (userCache[userId]) return userCache[userId];
-  if (pendingUserRequests[userId]) return pendingUserRequests[userId];
-
-  const fetchPromise = (async () => {
-    try {
-      const response = await fetch(`https://api.notion.com/v1/users/${userId}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          "Notion-Version": "2022-06-28",
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log(`User fetched: ${userId} -> ${data.name}`, data);
-        const name = data.name || "Unknown";
-        userCache[userId] = name;
-        return name;
-      } else {
-        const errorText = await response.text();
-        console.warn(`User fetch failed: ${response.status}`, errorText);
-        // 権限エラーなどの場合は再試行しないようにキャッシュする
-        if (response.status === 403 || response.status === 404) {
-           userCache[userId] = "User"; // キャッシュして次回以降スキップ
-           return "User";
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching user profile:", error);
-    }
-    return null;
-  })();
-
-  pendingUserRequests[userId] = fetchPromise;
-
-  try {
-    return await fetchPromise;
-  } finally {
-    delete pendingUserRequests[userId];
-  }
-}
 
 // ロールアップから値を抽出するヘルパー
 function getRollupValue(rollup) {
@@ -484,11 +436,10 @@ function createTodoElement(todo) {
     } else if (prop.type === 'number' && prop.number !== null) {
       properties[propName] = { type: 'number', value: prop.number };
     } else if (prop.type === 'people' && prop.people && prop.people.length > 0) {
-      // ユーザーIDも含めて保存
+      // 名前がない場合は "User" または "Unknown" と表示
       const people = prop.people.map(p => ({
         id: p.id,
-        name: p.name || (p.object === 'user' ? 'User' : 'Unknown'),
-        needsFetch: !p.name && p.object === 'user' // 名前がなくUserオブジェクトならフェッチ対象
+        name: p.name || (p.object === 'user' ? 'User' : 'Unknown')
       }));
       properties[propName] = { type: 'people', value: people };
     } else if (prop.type === 'url' && prop.url) {
@@ -534,8 +485,7 @@ function createTodoElement(todo) {
         metaHtml += `<span class="number-tag">🔢 ${propData.value}</span>`;
       } else if (propData.type === 'people') {
         propData.value.forEach((person) => {
-          const fetchAttr = person.needsFetch ? ` data-needs-fetch="true" data-user-id="${person.id}"` : '';
-          metaHtml += `<span class="people-tag"${fetchAttr}>👤 ${escapeHtml(person.name)}</span>`;
+          metaHtml += `<span class="people-tag">👤 ${escapeHtml(person.name)}</span>`;
         });
       } else if (propData.type === 'url') {
         const shortUrl = propData.value.length > 30 ? propData.value.substring(0, 30) + "..." : propData.value;
@@ -611,14 +561,14 @@ function createTodoElement(todo) {
   let dueDate = null;
   let tags = [];
 
-  let people = [];
+
 
   // propertiesから値を抽出
   for (const [key, data] of Object.entries(properties)) {
     if (data.type === 'date') dueDate = data.value;
     else if (data.type === 'tags') tags = data.value;
 
-    else if (data.type === 'people') people = people.concat(data.value);
+
   }
 
   // 期日・タグ編集のクリックイベント
@@ -637,19 +587,7 @@ function createTodoElement(todo) {
 
 
 
-  // 担当者名の非同期取得 (NEW)
-  if (people.length > 0) {
-    people.forEach(person => {
-      if (person.needsFetch) {
-        fetchUserProfile(person.id).then(name => {
-          if (name) {
-            const peopleTags = div.querySelectorAll(`.people-tag[data-user-id="${person.id}"]`);
-            peopleTags.forEach(el => el.textContent = `👤 ${name}`);
-          }
-        });
-      }
-    });
-  }
+
 
   return div;
 }
