@@ -417,7 +417,7 @@ function createTodoElement(todo) {
 
   // このTODOが属するデータベースの表示設定を取得
   const dbId = todo.parent.database_id;
-  const db = config.databases.find(d => d.id === dbId);
+  const db = config.databases.find(d => d.id.replace(/-/g, '') === dbId.replace(/-/g, ''));
   
   // visiblePropertiesを取得(後方互換性のため、displaySettingsも考慮)
   let visibleProperties = db?.visibleProperties;
