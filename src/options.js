@@ -415,29 +415,126 @@ function addFilterRow(db, filterData = null) {
       });
       if (filterData && filterData.property === propName) input.value = filterData.value;
 
+      if (filterData && filterData.property === propName) input.value = filterData.value;
+
     } else if (prop.type === 'people') {
-      input = document.createElement('select');
-      input.className = 'filter-value-input';
-      const emptyOp = document.createElement('option'); emptyOp.value = ''; emptyOp.textContent = '(選択してください)';
-      input.appendChild(emptyOp);
+      // 検索機能付きドロップダウン
+      valueContainer.innerHTML = ''; // クリア
       
-      if (db.users && db.users.length > 0) {
-        db.users.forEach(u => {
-          const op = document.createElement('option');
-          op.value = u.id; // 値はUUID
-          op.textContent = u.name;
-          input.appendChild(op);
-        });
-      } else {
-        // ユーザー情報がない場合
-        const op = document.createElement('option');
-        op.textContent = '⚠️ (更新ボタンを押してください)';
-        input.appendChild(op);
-        input.style.backgroundColor = '#fef2f2';
+      const wrapper = document.createElement('div');
+      wrapper.className = 'searchable-dropdown';
+      
+      // 送信用（隠しフィールド）
+      const hiddenInput = document.createElement('input');
+      hiddenInput.type = 'hidden';
+      hiddenInput.className = 'filter-value-input'; // getFiltersFromUIで取得される
+      
+      // 表示・検索用
+      const searchInput = document.createElement('input');
+      searchInput.type = 'text';
+      searchInput.className = 'filter-search-input';
+      searchInput.placeholder = '名前を検索...';
+      searchInput.autocomplete = 'off';
+      
+      // 候補リスト
+      const list = document.createElement('div');
+      list.className = 'dropdown-list';
+      
+      // ユーザーデータの準備（未割り当てを追加）
+      const users = db.users || [];
+      const allOptions = [
+        { id: '__empty__', name: '👤 未割り当て (Empty)' },
+        ...users
+      ];
+      
+      // 初期値設定
+      if (filterData && filterData.property === propName) {
+        hiddenInput.value = filterData.value;
+        const selectedUser = allOptions.find(u => u.id === filterData.value);
+        if (selectedUser) {
+          searchInput.value = selectedUser.name;
+        } else {
+          // UUIDしかわからない場合（名前が変わった等）
+          searchInput.value = filterData.value; 
+        }
       }
       
-      if (filterData && filterData.property === propName) input.value = filterData.value;
+      // リスト描画関数
+      const renderList = (filterText = '') => {
+        list.innerHTML = '';
+        const lowerFilter = filterText.toLowerCase();
+        
+        const filtered = allOptions.filter(u => u.name.toLowerCase().includes(lowerFilter));
+        
+        if (filtered.length === 0) {
+          const noResult = document.createElement('div');
+          noResult.className = 'dropdown-item';
+          noResult.textContent = '見つかりません';
+          list.appendChild(noResult);
+        } else {
+          filtered.forEach(u => {
+            const item = document.createElement('div');
+            item.className = 'dropdown-item';
+            if (u.id === '__empty__') item.classList.add('dropdown-item-empty');
+            item.textContent = u.name;
+            
+            item.addEventListener('mousedown', (e) => { // clickだとblurが先に走るためmousedown
+              e.preventDefault(); // フォーカス移動を防ぐ
+              hiddenInput.value = u.id;
+              searchInput.value = u.name;
+              list.classList.remove('show');
+            });
+            list.appendChild(item);
+          });
+        }
+      };
       
+      // イベントハンドラ
+      searchInput.addEventListener('focus', () => {
+        renderList(searchInput.value); // 全件または現状の値で表示
+        list.classList.add('show');
+      });
+      
+      searchInput.addEventListener('input', () => {
+        renderList(searchInput.value);
+        list.classList.add('show');
+      });
+      
+      searchInput.addEventListener('blur', () => {
+         // 少し遅らせて閉じる（クリック判定のため...だがmousedownでpreventDefaultしているので即時でもいいかも）
+         setTimeout(() => list.classList.remove('show'), 200);
+         
+         // 入力値がリストにない場合、クリアするかそのままにするか？
+         // ユーザービリティ的には、変な値を残さない方がいい。
+         const currentName = searchInput.value;
+         const match = allOptions.find(u => u.name === currentName);
+         if (!match) {
+             // 一致しない場合、もしhiddenに有効な値が入っていれば、その名前に戻す
+             const currentId = hiddenInput.value;
+             const saved = allOptions.find(u => u.id === currentId);
+             if (saved) {
+                 searchInput.value = saved.name;
+             } else {
+                 searchInput.value = '';
+                 hiddenInput.value = '';
+             }
+         }
+      });
+      
+      wrapper.appendChild(hiddenInput);
+      wrapper.appendChild(searchInput);
+      wrapper.appendChild(list);
+      valueContainer.appendChild(wrapper);
+      
+      // input変数への代入は不要（DOMに追加済み）
+      // updateValueInput末尾の appendChild(input) を回避する必要がある。
+      // updateValueInputの構造上、input変数に何か入れておかないと最後にappendChildされてしまう。
+      // しかし今回は valueContainer に直接 appendChild したので、
+      // updateValueInput の最後の行 `valueContainer.appendChild(input);` が問題になる。
+      // ダミー要素を返すか、構造を変えるか。
+      
+      input = document.createComment('searchable-dropdown-placeholder'); // ダミー
+
     } else {
       // Fallback: Text Input
       input = document.createElement('input');
