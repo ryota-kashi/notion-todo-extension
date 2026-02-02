@@ -1346,6 +1346,7 @@ function buildNotionFilter(db) {
     if (f.type === 'select') return { property: f.property, select: { equals: f.value } };
     if (f.type === 'multi_select') return { property: f.property, multi_select: { contains: f.value } };
     if (f.type === 'checkbox') return { property: f.property, checkbox: { equals: f.value.toLowerCase() === 'true' } };
+    if (f.type === 'people') return { property: f.property, people: { contains: f.value } };
     return null;
   }).filter(c => c !== null);
   

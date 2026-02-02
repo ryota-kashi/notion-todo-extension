@@ -62,6 +62,33 @@ function saveApiKey() {
   });
 }
 
+// Notionユーザー一覧を取得
+async function fetchUsers() {
+  const apiKey = elements.apiKey.value.trim();
+  if (!apiKey) return [];
+  
+  try {
+    const response = await fetch('https://api.notion.com/v1/users', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Notion-Version': '2022-06-28'
+      }
+    });
+    
+    if (!response.ok) {
+      console.warn(`ユーザー取得失敗: ${response.status}`);
+      return [];
+    }
+    
+    const data = await response.json();
+    return data.results.map(u => ({ id: u.id, name: u.name || 'Unknown' }));
+  } catch (error) {
+    console.error('ユーザー取得エラー:', error);
+    return [];
+  }
+}
+
 // データベーススキーマを取得
 async function fetchDatabaseSchema(databaseId) {
   const apiKey = elements.apiKey.value.trim();
@@ -93,7 +120,8 @@ async function fetchDatabaseSchema(databaseId) {
         id: prop.id,
         select: prop.select,
         multi_select: prop.multi_select,
-        status: prop.status
+        status: prop.status,
+        people: true // 担当者フィルター用マーカー
       };
     }
     
@@ -303,7 +331,7 @@ function addFilterRow(db, filterData = null) {
   
   // フィルタリング可能なプロパティを抽出
   const filterableProps = Object.entries(db.schema).filter(([name, prop]) => {
-    return ['select', 'multi_select', 'status', 'checkbox'].includes(prop.type);
+    return ['select', 'multi_select', 'status', 'checkbox', 'people'].includes(prop.type);
   });
   
   if (filterableProps.length === 0) {
@@ -387,6 +415,29 @@ function addFilterRow(db, filterData = null) {
       });
       if (filterData && filterData.property === propName) input.value = filterData.value;
 
+    } else if (prop.type === 'people') {
+      input = document.createElement('select');
+      input.className = 'filter-value-input';
+      const emptyOp = document.createElement('option'); emptyOp.value = ''; emptyOp.textContent = '(選択してください)';
+      input.appendChild(emptyOp);
+      
+      if (db.users && db.users.length > 0) {
+        db.users.forEach(u => {
+          const op = document.createElement('option');
+          op.value = u.id; // 値はUUID
+          op.textContent = u.name;
+          input.appendChild(op);
+        });
+      } else {
+        // ユーザー情報がない場合
+        const op = document.createElement('option');
+        op.textContent = '⚠️ (更新ボタンを押してください)';
+        input.appendChild(op);
+        input.style.backgroundColor = '#fef2f2';
+      }
+      
+      if (filterData && filterData.property === propName) input.value = filterData.value;
+      
     } else {
       // Fallback: Text Input
       input = document.createElement('input');
@@ -441,6 +492,10 @@ async function refreshSchema() {
   try {
     const newSchema = await fetchDatabaseSchema(db.id);
     db.schema = newSchema;
+    
+    // ユーザー一覧も更新して保存
+    const users = await fetchUsers();
+    db.users = users;
     
     // 新しいプロパティがある場合、デフォルトでは非表示にする（既存の設定を壊さないため）
     // あるいは全表示にする？ -> 既存の設定(visibleProperties)を維持する方針で。
