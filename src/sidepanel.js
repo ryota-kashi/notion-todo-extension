@@ -696,6 +696,17 @@ function getTodoTags(todo) {
   return allTags;
 }
 
+// リレーションを取得
+function getTodoRelations(todo) {
+  const relations = [];
+  for (const prop of Object.values(todo.properties)) {
+    if (prop.type === "relation" && prop.relation) {
+      prop.relation.forEach((rel) => relations.push(rel.id));
+    }
+  }
+  return relations;
+}
+
 // リッチテキストを取得
 function getTodoRichText(todo) {
   for (const prop of Object.values(todo.properties)) {
