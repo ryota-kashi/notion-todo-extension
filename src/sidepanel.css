@@ -326,7 +326,8 @@ header h1 {
 }
 
 .due-date,
-.tag {
+.tag,
+.rollup-tag {
   font-size: 10px;
   font-weight: 700;
   padding: 2px 8px;
@@ -348,6 +349,12 @@ header h1 {
   background: #f0fdf4;
   color: var(--primary-dark);
   border: 1px solid var(--primary-light);
+}
+
+.rollup-tag {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #dbeafe;
 }
 
 /* 繝輔ャ繧ｿ繝ｼ */

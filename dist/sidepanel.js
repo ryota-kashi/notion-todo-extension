@@ -60,13 +60,44 @@ async function fetchUserProfile(userId) {
 
     if (response.ok) {
       const data = await response.json();
+      console.log(`User fetched: ${userId} -> ${data.name}`, data);
       const name = data.name || "Unknown";
       userCache[userId] = name;
       return name;
+    } else {
+      console.warn(`User fetch failed: ${response.status}`, await response.text());
     }
   } catch (error) {
     console.error("Error fetching user profile:", error);
   }
+
+  return null;
+}
+
+// ロールアップから値を抽出するヘルパー
+function getRollupValue(rollup) {
+  if (!rollup) return null;
+  
+  if (rollup.type === "array") {
+    // 配列内の各要素から値を抽出して結合
+    return rollup.array.map(item => {
+      if (item.type === "title" && item.title) return item.title.map(t => t.plain_text).join("");
+      if (item.type === "rich_text" && item.rich_text) return item.rich_text.map(t => t.plain_text).join("");
+      if (item.type === "people" && item.people) return item.people.name || "User";
+      if (item.type === "select" && item.select) return item.select.name;
+      if (item.type === "multi_select" && item.multi_select) return item.multi_select.map(o => o.name).join(", ");
+      if (item.type === "date" && item.date) return formatDate(item.date.start);
+      if (item.type === "number" && item.number) return item.number;
+      if (item.type === "url" && item.url) return item.url;
+      if (item.type === "email" && item.email) return item.email;
+      if (item.type === "phone_number" && item.phone_number) return item.phone_number;
+      return "";
+    }).filter(v => v !== "").join(", ");
+  }
+  
+  if (rollup.type === "date" && rollup.date) return formatDate(rollup.date.start);
+  if (rollup.type === "number" && rollup.number) return rollup.number;
+  
   return null;
 }
 
@@ -477,6 +508,11 @@ function createTodoElement(todo) {
       properties[propName] = { type: 'people', value: people };
     } else if (prop.type === 'url' && prop.url) {
       properties[propName] = { type: 'url', value: prop.url };
+    } else if (prop.type === 'rollup' && prop.rollup) {
+      const value = getRollupValue(prop.rollup);
+      if (value) {
+        properties[propName] = { type: 'rollup', value: value };
+      }
     } else if (prop.type === 'checkbox') {
       // 完了フラグ用のチェックボックスは除外（名前で判定）
       const isStatusCheckbox = ['Done', '完了', 'Completed', 'Finished'].some(name => 
@@ -523,6 +559,9 @@ function createTodoElement(todo) {
       } else if (propData.type === 'url') {
         const shortUrl = propData.value.length > 30 ? propData.value.substring(0, 30) + "..." : propData.value;
         metaHtml += `<a href="${propData.value}" target="_blank" class="url-tag" title="${propData.value}">📎 ${escapeHtml(shortUrl)}</a>`;
+      } else if (propData.type === 'rollup') {
+        const shortValue = propData.value.length > 20 ? propData.value.substring(0, 20) + "..." : propData.value;
+        metaHtml += `<span class="tag rollup-tag" title="${escapeHtml(propData.value)}">🔗 ${escapeHtml(shortValue)}</span>`;
       } else if (propData.type === 'checkbox') {
         metaHtml += `<span class="checkbox-tag">✅ ${escapeHtml(propName)}</span>`;
       }
