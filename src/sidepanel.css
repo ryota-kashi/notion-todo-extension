@@ -411,14 +411,7 @@ footer {
   font-weight: 500;
 }
 
-.todo-list::-webkit-scrollbar {
-  width: 4px;
-}
 
-.todo-list::-webkit-scrollbar-thumb {
-  background: var(--primary-light);
-  border-radius: 10px;
-}
 
 /* 繝｢繝ｼ繝繝ｫ */
 .modal {
