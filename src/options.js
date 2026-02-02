@@ -240,7 +240,14 @@ async function openEditDbModal(index) {
     }
   }
   
-  // プロパティチェックボックスを動的に生成
+  renderPropertyCheckboxes(db);
+  
+  document.getElementById('editDbModal').style.display = 'flex';
+  document.body.style.overflow = 'hidden'; // 背景スクロール禁止
+}
+
+// プロパティチェックボックスを描画
+function renderPropertyCheckboxes(db) {
   const container = document.getElementById('propertyCheckboxes');
   container.innerHTML = '';
   
@@ -261,6 +268,36 @@ async function openEditDbModal(index) {
     label.appendChild(checkbox);
     label.appendChild(span);
     container.appendChild(label);
+  }
+}
+
+// スキーマを強制更新
+async function refreshSchema() {
+  if (editingDbIndex === null) return;
+  const db = databases[editingDbIndex];
+  
+  const btn = document.getElementById('refreshSchemaBtn');
+  const originalText = btn.textContent;
+  btn.textContent = '取得中...';
+  btn.disabled = true;
+  
+  try {
+    const newSchema = await fetchDatabaseSchema(db.id);
+    db.schema = newSchema;
+    
+    // 新しいプロパティがある場合、デフォルトでは非表示にする（既存の設定を壊さないため）
+    // あるいは全表示にする？ -> 既存の設定(visibleProperties)を維持する方針で。
+    // 新しいプロパティは visibleProperties に含まれないので、自動的に非表示になる。
+    // チェックボックスを描画し直す
+    renderPropertyCheckboxes(db);
+    
+    saveToStorage();
+    showMessage('✓ プロパティ情報を更新しました', 'success');
+  } catch (error) {
+    showMessage(`更新エラー: ${error.message}`, 'error');
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
   }
   
   document.getElementById('editDbModal').style.display = 'flex';
@@ -344,8 +381,8 @@ function closeEditDbModal() {
 
 // イベントリスナー
 elements.saveApiKeyBtn.addEventListener('click', saveApiKey);
-
 elements.addDbBtn.addEventListener('click', addDatabase);
+document.getElementById('refreshSchemaBtn').addEventListener('click', refreshSchema);
 
 
 // DB編集モーダル
