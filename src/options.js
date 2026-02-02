@@ -309,6 +309,60 @@ function renderFilters(db) {
   const container = document.getElementById('filterList');
   container.innerHTML = '';
   
+  // フィルター条件 (AND/OR) の切り替えUI
+  const operatorDiv = document.createElement('div');
+  operatorDiv.className = 'filter-operator-control';
+  operatorDiv.style.marginBottom = '12px';
+  operatorDiv.style.padding = '8px 12px';
+  operatorDiv.style.background = '#f8fafc';
+  operatorDiv.style.borderRadius = '8px';
+  operatorDiv.style.display = 'flex';
+  operatorDiv.style.gap = '16px';
+  operatorDiv.style.alignItems = 'center';
+
+  const label = document.createElement('span');
+  label.textContent = '結合条件:';
+  label.style.fontWeight = 'bold';
+  label.style.fontSize = '13px';
+  label.style.color = '#4b5563';
+
+  // AND radio
+  const labelAnd = document.createElement('label');
+  labelAnd.style.display = 'flex';
+  labelAnd.style.alignItems = 'center';
+  labelAnd.style.gap = '4px';
+  labelAnd.style.fontSize = '13px';
+  labelAnd.style.cursor = 'pointer';
+  const radioAnd = document.createElement('input');
+  radioAnd.type = 'radio';
+  radioAnd.name = 'filterOperator';
+  radioAnd.value = 'and';
+  radioAnd.checked = !db.filterOperator || db.filterOperator === 'and';
+  radioAnd.className = 'filter-operator-radio';
+  labelAnd.appendChild(radioAnd);
+  labelAnd.appendChild(document.createTextNode('すべて一致 (AND)'));
+
+  // OR radio
+  const labelOr = document.createElement('label');
+  labelOr.style.display = 'flex';
+  labelOr.style.alignItems = 'center';
+  labelOr.style.gap = '4px';
+  labelOr.style.fontSize = '13px';
+  labelOr.style.cursor = 'pointer';
+  const radioOr = document.createElement('input');
+  radioOr.type = 'radio';
+  radioOr.name = 'filterOperator';
+  radioOr.value = 'or';
+  radioOr.checked = db.filterOperator === 'or';
+  radioOr.className = 'filter-operator-radio';
+  labelOr.appendChild(radioOr);
+  labelOr.appendChild(document.createTextNode('いずれか一致 (OR)'));
+
+  operatorDiv.appendChild(label);
+  operatorDiv.appendChild(labelAnd);
+  operatorDiv.appendChild(labelOr);
+  container.appendChild(operatorDiv);
+  
   if (db.filters && Array.isArray(db.filters)) {
     db.filters.forEach(filter => {
       addFilterRow(db, filter);
@@ -478,11 +532,14 @@ function addFilterRow(db, filterData = null) {
             if (u.id === '__empty__') item.classList.add('dropdown-item-empty');
             item.textContent = u.name;
             
-            item.addEventListener('mousedown', (e) => { // clickだとblurが先に走るためmousedown
+            item.addEventListener('mousedown', (e) => {
               e.preventDefault(); // フォーカス移動を防ぐ
+              e.stopPropagation();
               hiddenInput.value = u.id;
               searchInput.value = u.name;
               list.classList.remove('show');
+              // 選択後はフォーカスを外す（UX的にその方が自然かも）
+              searchInput.blur();
             });
             list.appendChild(item);
           });
@@ -491,7 +548,7 @@ function addFilterRow(db, filterData = null) {
       
       // イベントハンドラ
       searchInput.addEventListener('focus', () => {
-        renderList(searchInput.value); // 全件または現状の値で表示
+        renderList(searchInput.value);
         list.classList.add('show');
       });
       
@@ -501,24 +558,31 @@ function addFilterRow(db, filterData = null) {
       });
       
       searchInput.addEventListener('blur', () => {
-         // 少し遅らせて閉じる（クリック判定のため...だがmousedownでpreventDefaultしているので即時でもいいかも）
-         setTimeout(() => list.classList.remove('show'), 200);
-         
-         // 入力値がリストにない場合、クリアするかそのままにするか？
-         // ユーザービリティ的には、変な値を残さない方がいい。
-         const currentName = searchInput.value;
-         const match = allOptions.find(u => u.name === currentName);
-         if (!match) {
-             // 一致しない場合、もしhiddenに有効な値が入っていれば、その名前に戻す
+         // 少し遅らせて閉じる
+         setTimeout(() => {
+           list.classList.remove('show');
+           
+           // 入力値がリストにない場合の処理（完全一致チェック）
+           const currentName = searchInput.value;
+           // 名前で一致を探す
+           const match = allOptions.find(u => u.name === currentName);
+           
+           if (match) {
+             hiddenInput.value = match.id;
+           } else {
+             // 一致しない場合、元に戻すかクリアするか
+             // IDから復元を試みる
              const currentId = hiddenInput.value;
              const saved = allOptions.find(u => u.id === currentId);
+             
              if (saved) {
-                 searchInput.value = saved.name;
+               searchInput.value = saved.name;
              } else {
-                 searchInput.value = '';
-                 hiddenInput.value = '';
+               searchInput.value = '';
+               hiddenInput.value = '';
              }
-         }
+           }
+         }, 200);
       });
       
       wrapper.appendChild(hiddenInput);
@@ -699,7 +763,8 @@ async function saveEditDb() {
     name: newName,
     schema: db.schema,
     visibleProperties: visibleProperties,
-    filters: getFiltersFromUI()
+    filters: getFiltersFromUI(),
+    filterOperator: document.querySelector('input[name="filterOperator"]:checked')?.value || 'and'
   };
   saveToStorage();
   

@@ -1358,6 +1358,9 @@ function buildNotionFilter(db) {
   if (conditions.length === 0) return undefined;
   if (conditions.length === 1) return conditions[0];
   
+  if (db.filterOperator === 'or') {
+    return { or: conditions };
+  }
   return { and: conditions };
 }
 
