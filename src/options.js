@@ -309,6 +309,17 @@ function renderFilters(db) {
   const container = document.getElementById('filterList');
   container.innerHTML = '';
   
+  // 案内メッセージ（更新ボタンのガイド）
+  const guideMsg = document.createElement('div');
+  guideMsg.style.marginBottom = '12px';
+  guideMsg.style.fontSize = '12px';
+  guideMsg.style.color = '#6b7280';
+  guideMsg.style.background = '#f3f4f6';
+  guideMsg.style.padding = '8px 12px';
+  guideMsg.style.borderRadius = '8px';
+  guideMsg.innerHTML = '💡 <b>TIPS:</b> 担当者やタグの選択肢が表示されない場合は、右上の <b>「🔄 更新」</b> ボタンを押して最新の情報を取得してください。';
+  container.appendChild(guideMsg);
+  
   // フィルター条件 (AND/OR) の切り替えUI
   const operatorDiv = document.createElement('div');
   operatorDiv.className = 'filter-operator-control';
