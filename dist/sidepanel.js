@@ -516,6 +516,18 @@ function createTodoElement(todo) {
     }
   });
 
+  // イベントリスナー用に変数を準備
+  let dueDate = null;
+  let tags = [];
+  let relations = [];
+
+  // propertiesから値を抽出
+  for (const [key, data] of Object.entries(properties)) {
+    if (data.type === 'date') dueDate = data.value;
+    else if (data.type === 'tags') tags = data.value;
+    else if (data.type === 'relation') relations = data.value;
+  }
+
   // 期日・タグ編集のクリックイベント
   const metaElements = div.querySelectorAll('[data-edit-type]');
   metaElements.forEach(element => {
