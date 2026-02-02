@@ -264,6 +264,7 @@ async function openEditDbModal(index) {
   }
   
   document.getElementById('editDbModal').style.display = 'flex';
+  document.body.style.overflow = 'hidden'; // 背景スクロール禁止
 }
 
 // プロパティタイプに応じたアイコンを取得
@@ -338,6 +339,7 @@ async function saveEditDb() {
 function closeEditDbModal() {
   document.getElementById('editDbModal').style.display = 'none';
   editingDbIndex = null;
+  document.body.style.overflow = ''; // 背景スクロール解除
 }
 
 // イベントリスナー

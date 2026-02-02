@@ -408,13 +408,19 @@ function createTodoElement(todo) {
     } else if (prop.type === 'number' && prop.number !== null) {
       properties[propName] = { type: 'number', value: prop.number };
     } else if (prop.type === 'people' && prop.people && prop.people.length > 0) {
-      const people = prop.people.map(p => p.name || p.email || "Unknown");
+      // 名前がない場合はIDの一部を表示するか、既知のユーザー情報を参照する
+      const people = prop.people.map(p => p.name || (p.object === 'user' ? 'User' : 'Unknown'));
       properties[propName] = { type: 'people', value: people };
     } else if (prop.type === 'url' && prop.url) {
       properties[propName] = { type: 'url', value: prop.url };
-    } else if (prop.type === 'checkbox' && !['Done', '完了', 'Completed'].includes(propName)) {
-      if (prop.checkbox) {
-        properties[propName] = { type: 'checkbox', value: true };
+    } else if (prop.type === 'checkbox') {
+      // 完了フラグ用のチェックボックスは除外（名前で判定）
+      const isStatusCheckbox = ['Done', '完了', 'Completed', 'Finished'].some(name => 
+        name.toLowerCase() === propName.toLowerCase()
+      );
+      
+      if (!isStatusCheckbox && prop.checkbox) {
+         properties[propName] = { type: 'checkbox', value: true };
       }
     }
   }
@@ -525,7 +531,7 @@ function createTodoElement(todo) {
   for (const [key, data] of Object.entries(properties)) {
     if (data.type === 'date') dueDate = data.value;
     else if (data.type === 'tags') tags = data.value;
-    else if (data.type === 'relation') relations = data.value;
+    else if (data.type === 'relation') relations = relations.concat(data.value);
   }
 
   // 期日・タグ編集のクリックイベント
