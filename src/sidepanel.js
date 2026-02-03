@@ -1,4 +1,4 @@
-// Notion TODO Manager - サイドパネルロジック
+﻿// Notion TODO Manager - サイドパネルロジック
 
 let config = {
   apiKey: "",
@@ -582,15 +582,26 @@ function createTodoElement(todo) {
     </div>
     <button class="done-btn">完了</button>
   `;
+  
+  // カード全体をクリックしたらNotionページを開く
+  div.addEventListener("click", (e) => {
+    // 完了ボタンやコンテンツ編集エリアをクリックした場合は除外
+    if (e.target.closest(".done-btn") || e.target.closest(".todo-content")) {
+      return;
+    }
+    if (todo.url) {
+      chrome.tabs.create({ url: todo.url });
+    }
+  });
+  
+  // カーソルをポインターに変更
+  div.style.cursor = "pointer";
 
   const doneBtn = div.querySelector(".done-btn");
   const todoContent = div.querySelector(".todo-content");
 
-  // 完了ボタンクリックで完了切り替え
   doneBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    // 誤タップ防止のため、確認ダイアログを出すか？-> UX重視ならトーストでUndoさせるのが良いが今回は即実行
-    // ボタン化することで誤タップは減るはず。
     toggleTodo(todo.id, !isCompleted);
   });
 
@@ -1849,5 +1860,33 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
 });
 
+
+// Googleカレンダーにタスクを追加
+function addToGoogleCalendar(todo) {
+  try {
+    const title = getTodoTitle(todo);
+    const dueDate = getTodoDueDate(todo);
+    
+    // Google TasksのURLを使用
+    const params = new URLSearchParams();
+    params.append('title', title);
+    
+    if (dueDate) {
+      params.append('date', dueDate);
+    }
+    
+    if (todo.url) {
+      params.append('notes', 'Notion: ' + todo.url);
+    }
+    
+    // Google TasksのURL
+    const tasksUrl = 'https://tasks.google.com/create?' + params.toString(); 
+    chrome.tabs.create({ url: tasksUrl });
+    
+  } catch (error) {
+    console.error('Googleカレンダー追加エラー:', error);
+    showError('Googleカレンダーへの追加に失敗しました: ' + error.message);
+  }
+}
 // 初期化実行
 init();

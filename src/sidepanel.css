@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --primary: #10b981;
   --primary-dark: #059669;
   --primary-light: #d1fae5;
@@ -68,15 +68,15 @@
   background: #f3f4f6;
   color: #9ca3af;
   border: 1px solid #e5e7eb;
-  padding: 8px 16px; /* 少し大きく */
+  padding: 6px 12px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
   transition: all 0.2s ease;
-  opacity: 0; /* デフォルトは非表示（または薄く） */
+  opacity: 0;
   transform: translateX(10px);
 }
 
@@ -856,3 +856,14 @@ footer {
   background: #a7f3d0;
   transform: scale(1.05);
 }
+
+/* TODOアクションボタンコンテナ */
+.todo-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+
+
