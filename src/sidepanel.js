@@ -169,13 +169,6 @@ function getActiveDatabaseId() {
   return config.activeDatabaseId;
 }
 
-// グローバルキャッシュ
-// let titlePropertyName = ""; // Removed
-// let databaseSchema = null; // 廃止: databaseSchemas[dbId] を使用
-let editingTodoId = null; // 現在編集中のTODO ID
-let editingPropName = null; // 現在編集中のプロパティ名
-let currentPeopleIds = []; // 編集中の担当者IDリスト（編集用一時保存）
-// const pageTitleCache = {}; // Removed duplicate definition
 const pendingRequests = {}; // リクエストの重複排除用
 
 // データベーススキーマを取得(プロパティ名とオプションを取得)
@@ -579,7 +572,6 @@ function createTodoElement(todo) {
 
 
   div.innerHTML = `
-    <input type="checkbox" class="bulk-checkbox" ${selectedIds.has(todo.id) ? 'checked' : ''}>
     <div class="todo-text">
       <div class="todo-content" contenteditable="true" spellcheck="false">${escapeHtml(title)}</div>
       ${metaHtml}
@@ -590,24 +582,10 @@ function createTodoElement(todo) {
     </button>
   `;
 
-  // チェックボックスのイベント
-  const bulkCb = div.querySelector(".bulk-checkbox");
-  bulkCb.addEventListener("change", (e) => {
-    if (e.target.checked) {
-      selectedIds.add(todo.id);
-      div.classList.add("bulk-selected");
-    } else {
-      selectedIds.delete(todo.id);
-      div.classList.remove("bulk-selected");
-    }
-    updateBulkActionsBar();
-  });
-
-
   // カード全体をクリックしたらNotionページを開く
   div.addEventListener("click", (e) => {
-    // 完了ボタン、カレンダーボタン、コンテンツ編集エリア、または一括選択チェックボックスをクリックした場合は除外
-    if (e.target.closest(".done-btn") || e.target.closest(".calendar-btn") || e.target.closest(".todo-content") || e.target.closest(".bulk-checkbox")) {
+    // 完了ボタン、カレンダーボタン、またはコンテンツ編集エリアをクリックした場合は除外
+    if (e.target.closest(".done-btn") || e.target.closest(".calendar-btn") || e.target.closest(".todo-content")) {
       return;
     }
 
@@ -1980,90 +1958,7 @@ window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e)
 
 
 
-// 一括操作の状態管理
-let selectedIds = new Set();
 
-function updateBulkActionsBar() {
-  const bar = document.getElementById('bulkActions');
-  const countSpan = document.getElementById('selectedCount');
-  
-  if (selectedIds.size > 0) {
-    bar.style.display = 'flex';
-    countSpan.textContent = selectedIds.size + ' 個選択中';
-  } else {
-    bar.style.display = 'none';
-  }
-}
-
-function clearBulkSelection() {
-  selectedIds.clear();
-  const checkboxes = document.querySelectorAll('.bulk-checkbox');
-  checkboxes.forEach(cb => cb.checked = false);
-  const items = document.querySelectorAll('.todo-item');
-  items.forEach(item => item.classList.remove('bulk-selected'));
-  updateBulkActionsBar();
-}
-
-async function bulkUpdateStatus(status) {
-  if (selectedIds.size === 0) return;
-  
-  const ids = Array.from(selectedIds);
-  showLoading();
-  
-  try {
-    const promises = ids.map(id => toggleTodo(id, status === 'Done'));
-    await Promise.all(promises);
-    clearBulkSelection();
-    await loadTodos();
-    showError('一括更新が完了しました');
-  } catch (error) {
-    console.error('一括更新エラー:', error);
-    showError('一括更新に失敗しました');
-  } finally {
-    hideLoading();
-  }
-}
-
-async function bulkDeleteTodos() {
-  if (selectedIds.size === 0) return;
-  if (!confirm(selectedIds.size + ' 件のタスクを削除してもよろしいですか？')) return;
-  
-  const ids = Array.from(selectedIds);
-  showLoading();
-  
-  try {
-    const promises = ids.map(id => deleteTodo(id));
-    await Promise.all(promises);
-    clearBulkSelection();
-    await loadTodos();
-    showError('一括削除が完了しました');
-  } catch (error) {
-    console.error('一括削除エラー:', error);
-    showError('一括削除に失敗しました');
-  } finally {
-    hideLoading();
-  }
-}
-
-async function deleteTodo(todoId) {
-  const response = await fetch(`https://api.notion.com/v1/pages/${todoId}`, {
-    method: 'PATCH',
-    headers: {
-      "Authorization": `Bearer ${config.apiKey}`,
-      "Notion-Version": "2022-06-28",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ archived: true })
-  });
-  if (!response.ok) throw new Error('Notion API error: ' + response.statusText);
-  return response.json();
-}
-
-function initBulkActionsListeners() {
-  document.getElementById('bulkCompleteBtn')?.addEventListener('click', () => bulkUpdateStatus('Done'));
-  document.getElementById('bulkDeleteBtn')?.addEventListener('click', bulkDeleteTodos);
-  document.getElementById('cancelSelectionBtn')?.addEventListener('click', clearBulkSelection);
-}
 // ドラッグ&ドロップ機能
 let draggedElement = null;
 
@@ -2108,144 +2003,9 @@ function getDragAfterElement(container, y) {
     }
   }, { offset: Number.NEGATIVE_INFINITY }).element;
 }
-// キーボードショートカット
-let selectedTodoIndex = -1;
-let selectedTodoId = null;
-
-function selectTodo(index) {
-  const todoItems = document.querySelectorAll('.todo-item');
-  if (index < 0 || index >= todoItems.length) return;
-  
-  // 前の選択を解除
-  todoItems.forEach(item => item.classList.remove('selected'));
-  
-  // 新しい選択
-  selectedTodoIndex = index;
-  todoItems[index].classList.add('selected');
-  selectedTodoId = todoItems[index].dataset.todoId;
-  
-  // スクロールして表示
-  todoItems[index].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-}
-
-function getSelectedTodo() {
-  if (selectedTodoId) {
-    return todos.find(t => t.id === selectedTodoId);
-  }
-  return null;
-}
-
-// グローバルキーボードイベント
-document.addEventListener('keydown', (e) => {
-  // モーダルが開いている場合はスキップ
-  const modals = document.querySelectorAll('.modal');
-  const modalOpen = Array.from(modals).some(m => m.style.display !== 'none');
-  if (modalOpen) {
-    if (e.key === 'Escape') {
-      modals.forEach(m => m.style.display = 'none');
-    }
-    return;
-  }
-  
-  // 入力フィールドにフォーカスがある場合はスキップ
-  const activeElement = document.activeElement;
-  if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable) {
-    if (e.key === 'Enter' && activeElement.id === 'newTaskInput') {
-      e.preventDefault();
-      document.getElementById('addTaskBtn')?.click();
-    }
-    return;
-  }
-  
-  const todoItems = document.querySelectorAll('.todo-item');
-  
-  switch(e.key) {
-    case 'ArrowDown':
-      e.preventDefault();
-      if (selectedTodoIndex < todoItems.length - 1) {
-        selectTodo(selectedTodoIndex + 1);
-      }
-      break;
-      
-    case 'ArrowUp':
-      e.preventDefault();
-      if (selectedTodoIndex > 0) {
-        selectTodo(selectedTodoIndex - 1);
-      } else if (selectedTodoIndex === -1 && todoItems.length > 0) {
-        selectTodo(0);
-      }
-      break;
-      
-    case 'Enter':
-      e.preventDefault();
-      document.getElementById('newTaskInput')?.focus();
-      break;
-      
-    case 'k':
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const todo = getSelectedTodo();
-        if (todo) {
-          const isCompleted = getTodoStatus(todo) === 'Done';
-          toggleTodo(todo.id, !isCompleted);
-        }
-      }
-      break;
-      
-    case 'e':
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const todo = getSelectedTodo();
-        if (todo && todo.url) {
-          chrome.tabs.create({ url: todo.url });
-        }
-      }
-      break;
-      
-    case 'g':
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const todo = getSelectedTodo();
-        if (todo) {
-          addToGoogleCalendar(todo);
-        }
-      }
-      break;
-  }
-});
-
-// タスクリスト更新時に選択をリセット
-const originalRenderTodos = renderTodos;
-renderTodos = function() {
-  originalRenderTodos.apply(this, arguments);
-  selectedTodoIndex = -1;
-  selectedTodoId = null;
-};
-function initNotificationToggle() {
-  chrome.storage.local.get(["notificationsEnabled"], (result) => {
-    updateNotificationIcon(result.notificationsEnabled);
-  });
-  
-  document.getElementById('notificationToggle')?.addEventListener('click', () => {
-    chrome.storage.local.get(["notificationsEnabled"], (result) => {
-      const newState = !result.notificationsEnabled;
-      chrome.storage.local.set({ notificationsEnabled: newState });
-      updateNotificationIcon(newState);
-      if (newState) {
-        showError(newState ? "通知を有効にしました" : "通知を無効にしました");
-      }
-    });
-  });
-}
-
-function updateNotificationIcon(enabled) {
-  const btn = document.getElementById('notificationToggle');
-  if (!btn) return;
-  btn.classList.toggle('active', enabled);
-  btn.style.color = enabled ? 'var(--primary)' : 'var(--text-muted)';
-}
 
 // テーマ初期化
 initTheme();
 // 初期化実行
 init();
+

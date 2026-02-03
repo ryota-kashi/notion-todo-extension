@@ -1039,16 +1039,7 @@ footer {
   object-fit: contain;
   border-radius: 4px;
 }
-/* 選択されたタスクのスタイル */
-.todo-item.selected {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-  background: var(--primary-light) !important;
-}
 
-[data-theme="dark"] .todo-item.selected {
-  background: rgba(52, 211, 153, 0.15) !important;
-}
 /* ドラッグ&ドロップ */
 .todo-item[draggable="true"] {
   cursor: move;
@@ -1067,4 +1058,5 @@ footer {
 .todo-item.drag-over {
   border-top: 3px solid var(--primary);
 }
+
 
