@@ -99,6 +99,8 @@ async function init() {
 
     hideSetupMessage();
     await loadTodos();
+    
+    
   });
 }
 
@@ -263,6 +265,7 @@ async function getDatabaseSchema(dbId) {
 
   // キャッシュに保存
   databaseSchemas[dbId] = schema;
+  chrome.storage.local.set({ databaseSchemas });
 
   // 後方互換性変数（アクティブなDBの場合のみ更新）
   if (dbId === getActiveDatabaseId()) {
@@ -576,19 +579,38 @@ function createTodoElement(todo) {
 
 
   div.innerHTML = `
+    <input type="checkbox" class="bulk-checkbox" ${selectedIds.has(todo.id) ? 'checked' : ''}>
     <div class="todo-text">
       <div class="todo-content" contenteditable="true" spellcheck="false">${escapeHtml(title)}</div>
       ${metaHtml}
     </div>
     <button class="done-btn">完了</button>
+    <button class="calendar-btn" title="Googleカレンダーに追加">
+      <img src="https://img.icons8.com/color/96/google-calendar.png" alt="Google Calendar" />
+    </button>
   `;
-  
+
+  // チェックボックスのイベント
+  const bulkCb = div.querySelector(".bulk-checkbox");
+  bulkCb.addEventListener("change", (e) => {
+    if (e.target.checked) {
+      selectedIds.add(todo.id);
+      div.classList.add("bulk-selected");
+    } else {
+      selectedIds.delete(todo.id);
+      div.classList.remove("bulk-selected");
+    }
+    updateBulkActionsBar();
+  });
+
+
   // カード全体をクリックしたらNotionページを開く
   div.addEventListener("click", (e) => {
-    // 完了ボタンやコンテンツ編集エリアをクリックした場合は除外
-    if (e.target.closest(".done-btn") || e.target.closest(".todo-content")) {
+    // 完了ボタン、カレンダーボタン、コンテンツ編集エリア、または一括選択チェックボックスをクリックした場合は除外
+    if (e.target.closest(".done-btn") || e.target.closest(".calendar-btn") || e.target.closest(".todo-content") || e.target.closest(".bulk-checkbox")) {
       return;
     }
+
     if (todo.url) {
       chrome.tabs.create({ url: todo.url });
     }
@@ -598,11 +620,17 @@ function createTodoElement(todo) {
   div.style.cursor = "pointer";
 
   const doneBtn = div.querySelector(".done-btn");
+  const calendarBtn = div.querySelector(".calendar-btn");
   const todoContent = div.querySelector(".todo-content");
 
   doneBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     toggleTodo(todo.id, !isCompleted);
+  });
+
+  calendarBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    addToGoogleCalendar(todo);
   });
 
   // タイトル編集の保存処理
@@ -669,9 +697,8 @@ function createTodoElement(todo) {
     });
   });
 
-
-
-
+  // ドラッグ&ドロップを有効化
+  makeTodoDraggable(div);
 
   return div;
 }
@@ -1867,26 +1894,358 @@ function addToGoogleCalendar(todo) {
     const title = getTodoTitle(todo);
     const dueDate = getTodoDueDate(todo);
     
-    // Google TasksのURLを使用
     const params = new URLSearchParams();
-    params.append('title', title);
+    params.append('action', 'TEMPLATE');
+    params.append('text', title);
     
     if (dueDate) {
-      params.append('date', dueDate);
+      // 期日の9:00-9:30に設定
+      const startDateTime = dueDate + 'T090000';
+      const endDateTime = dueDate + 'T093000';
+      params.append('dates', startDateTime + '/' + endDateTime);
+    } else {
+      // 期日がない場合は今日の9:00-9:30
+      const today = new Date();
+      const year = today.getFullYear();
+      const month = String(today.getMonth() + 1).padStart(2, '0');
+      const day = String(today.getDate()).padStart(2, '0');
+      const dateStr = year + month + day;
+      params.append('dates', dateStr + 'T090000/' + dateStr + 'T093000');
     }
     
     if (todo.url) {
-      params.append('notes', 'Notion: ' + todo.url);
+      params.append('details', 'Notion: ' + todo.url);
     }
     
-    // Google TasksのURL
-    const tasksUrl = 'https://tasks.google.com/create?' + params.toString(); 
-    chrome.tabs.create({ url: tasksUrl });
+    const calendarUrl = 'https://calendar.google.com/calendar/render?' + params.toString(); 
+    chrome.tabs.create({ url: calendarUrl });
     
   } catch (error) {
     console.error('Googleカレンダー追加エラー:', error);
     showError('Googleカレンダーへの追加に失敗しました: ' + error.message);
   }
 }
+
+// ダークモード切り替え
+function initTheme() {
+  // 保存されたテーマを読み込む
+  chrome.storage.local.get(['theme'], (result) => {
+    const savedTheme = result.theme;
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+    
+    document.documentElement.setAttribute('data-theme', theme);
+    updateThemeIcon(theme);
+  });
+}
+
+function toggleTheme() {
+  const currentTheme = document.documentElement.getAttribute('data-theme');
+  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  
+  document.documentElement.setAttribute('data-theme', newTheme);
+  chrome.storage.local.set({ theme: newTheme });
+  updateThemeIcon(newTheme);
+}
+
+function updateThemeIcon(theme) {
+  const themeToggle = document.getElementById('themeToggle');
+  if (!themeToggle) return;
+  
+  if (theme === 'dark') {
+    // 太陽アイコン(ライトモードに切り替え)
+    themeToggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
+  } else {
+    // 月アイコン(ダークモードに切り替え)
+    themeToggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+  }
+}
+
+// テーマ切り替えボタンのイベントリスナー
+document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
+
+// システムテーマ変更の監視
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+  chrome.storage.local.get(['theme'], (result) => {
+    if (!result.theme) {
+      const theme = e.matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+      updateThemeIcon(theme);
+    }
+  });
+});
+
+
+
+
+
+
+// 一括操作の状態管理
+let selectedIds = new Set();
+
+function updateBulkActionsBar() {
+  const bar = document.getElementById('bulkActions');
+  const countSpan = document.getElementById('selectedCount');
+  
+  if (selectedIds.size > 0) {
+    bar.style.display = 'flex';
+    countSpan.textContent = selectedIds.size + ' 個選択中';
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function clearBulkSelection() {
+  selectedIds.clear();
+  const checkboxes = document.querySelectorAll('.bulk-checkbox');
+  checkboxes.forEach(cb => cb.checked = false);
+  const items = document.querySelectorAll('.todo-item');
+  items.forEach(item => item.classList.remove('bulk-selected'));
+  updateBulkActionsBar();
+}
+
+async function bulkUpdateStatus(status) {
+  if (selectedIds.size === 0) return;
+  
+  const ids = Array.from(selectedIds);
+  showLoading();
+  
+  try {
+    const promises = ids.map(id => toggleTodo(id, status === 'Done'));
+    await Promise.all(promises);
+    clearBulkSelection();
+    await loadTodos();
+    showError('一括更新が完了しました');
+  } catch (error) {
+    console.error('一括更新エラー:', error);
+    showError('一括更新に失敗しました');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function bulkDeleteTodos() {
+  if (selectedIds.size === 0) return;
+  if (!confirm(selectedIds.size + ' 件のタスクを削除してもよろしいですか？')) return;
+  
+  const ids = Array.from(selectedIds);
+  showLoading();
+  
+  try {
+    const promises = ids.map(id => deleteTodo(id));
+    await Promise.all(promises);
+    clearBulkSelection();
+    await loadTodos();
+    showError('一括削除が完了しました');
+  } catch (error) {
+    console.error('一括削除エラー:', error);
+    showError('一括削除に失敗しました');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function deleteTodo(todoId) {
+  const response = await fetch(`https://api.notion.com/v1/pages/${todoId}`, {
+    method: 'PATCH',
+    headers: {
+      "Authorization": `Bearer ${config.apiKey}`,
+      "Notion-Version": "2022-06-28",
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ archived: true })
+  });
+  if (!response.ok) throw new Error('Notion API error: ' + response.statusText);
+  return response.json();
+}
+
+function initBulkActionsListeners() {
+  document.getElementById('bulkCompleteBtn')?.addEventListener('click', () => bulkUpdateStatus('Done'));
+  document.getElementById('bulkDeleteBtn')?.addEventListener('click', bulkDeleteTodos);
+  document.getElementById('cancelSelectionBtn')?.addEventListener('click', clearBulkSelection);
+}
+// ドラッグ&ドロップ機能
+let draggedElement = null;
+
+function makeTodoDraggable(todoElement) {
+  todoElement.draggable = true;
+  
+  todoElement.addEventListener('dragstart', (e) => {
+    draggedElement = todoElement;
+    todoElement.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  
+  todoElement.addEventListener('dragend', (e) => {
+    todoElement.classList.remove('dragging');
+    draggedElement = null;
+  });
+  
+  todoElement.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    const afterElement = getDragAfterElement(todoElement.parentElement, e.clientY);
+    if (afterElement == null) {
+      todoElement.parentElement.appendChild(draggedElement);
+    } else {
+      todoElement.parentElement.insertBefore(draggedElement, afterElement);
+    }
+  });
+}
+
+function getDragAfterElement(container, y) {
+  const draggableElements = [...container.querySelectorAll('.todo-item:not(.dragging)')];
+  
+  return draggableElements.reduce((closest, child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    
+    if (offset < 0 && offset > closest.offset) {
+      return { offset: offset, element: child };
+    } else {
+      return closest;
+    }
+  }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+// キーボードショートカット
+let selectedTodoIndex = -1;
+let selectedTodoId = null;
+
+function selectTodo(index) {
+  const todoItems = document.querySelectorAll('.todo-item');
+  if (index < 0 || index >= todoItems.length) return;
+  
+  // 前の選択を解除
+  todoItems.forEach(item => item.classList.remove('selected'));
+  
+  // 新しい選択
+  selectedTodoIndex = index;
+  todoItems[index].classList.add('selected');
+  selectedTodoId = todoItems[index].dataset.todoId;
+  
+  // スクロールして表示
+  todoItems[index].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function getSelectedTodo() {
+  if (selectedTodoId) {
+    return todos.find(t => t.id === selectedTodoId);
+  }
+  return null;
+}
+
+// グローバルキーボードイベント
+document.addEventListener('keydown', (e) => {
+  // モーダルが開いている場合はスキップ
+  const modals = document.querySelectorAll('.modal');
+  const modalOpen = Array.from(modals).some(m => m.style.display !== 'none');
+  if (modalOpen) {
+    if (e.key === 'Escape') {
+      modals.forEach(m => m.style.display = 'none');
+    }
+    return;
+  }
+  
+  // 入力フィールドにフォーカスがある場合はスキップ
+  const activeElement = document.activeElement;
+  if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable) {
+    if (e.key === 'Enter' && activeElement.id === 'newTaskInput') {
+      e.preventDefault();
+      document.getElementById('addTaskBtn')?.click();
+    }
+    return;
+  }
+  
+  const todoItems = document.querySelectorAll('.todo-item');
+  
+  switch(e.key) {
+    case 'ArrowDown':
+      e.preventDefault();
+      if (selectedTodoIndex < todoItems.length - 1) {
+        selectTodo(selectedTodoIndex + 1);
+      }
+      break;
+      
+    case 'ArrowUp':
+      e.preventDefault();
+      if (selectedTodoIndex > 0) {
+        selectTodo(selectedTodoIndex - 1);
+      } else if (selectedTodoIndex === -1 && todoItems.length > 0) {
+        selectTodo(0);
+      }
+      break;
+      
+    case 'Enter':
+      e.preventDefault();
+      document.getElementById('newTaskInput')?.focus();
+      break;
+      
+    case 'k':
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const todo = getSelectedTodo();
+        if (todo) {
+          const isCompleted = getTodoStatus(todo) === 'Done';
+          toggleTodo(todo.id, !isCompleted);
+        }
+      }
+      break;
+      
+    case 'e':
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const todo = getSelectedTodo();
+        if (todo && todo.url) {
+          chrome.tabs.create({ url: todo.url });
+        }
+      }
+      break;
+      
+    case 'g':
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const todo = getSelectedTodo();
+        if (todo) {
+          addToGoogleCalendar(todo);
+        }
+      }
+      break;
+  }
+});
+
+// タスクリスト更新時に選択をリセット
+const originalRenderTodos = renderTodos;
+renderTodos = function() {
+  originalRenderTodos.apply(this, arguments);
+  selectedTodoIndex = -1;
+  selectedTodoId = null;
+};
+function initNotificationToggle() {
+  chrome.storage.local.get(["notificationsEnabled"], (result) => {
+    updateNotificationIcon(result.notificationsEnabled);
+  });
+  
+  document.getElementById('notificationToggle')?.addEventListener('click', () => {
+    chrome.storage.local.get(["notificationsEnabled"], (result) => {
+      const newState = !result.notificationsEnabled;
+      chrome.storage.local.set({ notificationsEnabled: newState });
+      updateNotificationIcon(newState);
+      if (newState) {
+        showError(newState ? "通知を有効にしました" : "通知を無効にしました");
+      }
+    });
+  });
+}
+
+function updateNotificationIcon(enabled) {
+  const btn = document.getElementById('notificationToggle');
+  if (!btn) return;
+  btn.classList.toggle('active', enabled);
+  btn.style.color = enabled ? 'var(--primary)' : 'var(--text-muted)';
+}
+
+// テーマ初期化
+initTheme();
 // 初期化実行
 init();
