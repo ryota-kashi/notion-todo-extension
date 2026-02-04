@@ -370,6 +370,27 @@ header h1 {
   border-color: var(--primary-light);
 }
 
+/* サブアイテム（親子関係） */
+.todo-item.sub-item {
+  margin-left: 20px;
+  border-left: 3px solid var(--primary-light);
+  background: var(--bg-soft);
+}
+
+.sub-item-icon {
+  color: var(--text-muted);
+  font-weight: bold;
+  margin-right: 4px;
+}
+
+.parent-info {
+  display: block;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  font-style: italic;
+}
+
 .todo-item.completed {
   opacity: 0.6;
   background: #f9fafb;

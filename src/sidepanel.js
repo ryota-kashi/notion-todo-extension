@@ -131,10 +131,12 @@ elements.dbSelector.addEventListener("change", async (e) => {
   if (newId === "__ALL__") {
     showAllDatabases = true;
     config.activeDatabaseId = ""; // アクティブDBをクリア
+    elements.addTaskForm.style.display = "none"; // タスク追加フォームを非表示
   } else {
     showAllDatabases = false;
     config.activeDatabaseId = newId;
     chrome.storage.local.set({ activeDatabaseId: newId });
+    elements.addTaskForm.style.display = "flex"; // タスク追加フォームを表示
   }
   
   titlePropertyName = ""; // キャッシュをクリア
@@ -162,6 +164,19 @@ async function loadConfig() {
       },
     );
   });
+}
+
+// ヘルパー: データベースIDをUUID形式（ハイフンあり）に正規化
+function normalizeDatabaseId(id) {
+  if (!id) return id;
+  // すでにハイフンが含まれている場合はそのまま返す
+  if (id.includes('-')) return id;
+  // ハイフンなしの32文字の場合、UUID形式に変換
+  // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  if (id.length === 32) {
+    return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
+  }
+  return id;
 }
 
 // ヘルパー: 現在のDB IDを取得
@@ -571,9 +586,32 @@ function createTodoElement(todo) {
   
 
 
+  // 親子関係（サブアイテム）の取得
+  let parentItemName = null;
+  let isSubItem = false;
+  
+  // 親アイテムのリレーションを探す（通常は 'Parent item' や '親アイテム' という名前）
+  for (const [propName, prop] of Object.entries(todo.properties)) {
+    if (prop.type === 'relation' && prop.relation && prop.relation.length > 0) {
+      // プロパティ名に 'parent' や '親' が含まれるものを優先的にチェック
+      const lowerName = propName.toLowerCase();
+      if (lowerName.includes('parent') || lowerName.includes('親')) {
+        isSubItem = true;
+        // 親のタイトル名が同期されているか確認（将来的な拡張用、現状は存在チェックのみ）
+        break;
+      }
+    }
+  }
+
+  if (isSubItem) {
+    div.classList.add("sub-item");
+  }
+
   div.innerHTML = `
     <div class="todo-text">
-      <div class="todo-content" contenteditable="true" spellcheck="false">${escapeHtml(title)}</div>
+      <div class="todo-content" contenteditable="true" spellcheck="false">
+        ${isSubItem ? '<span class="sub-item-icon">↳</span>' : ''}${escapeHtml(title)}
+      </div>
       ${metaHtml}
     </div>
     <button class="done-btn">完了</button>
@@ -641,6 +679,14 @@ function createTodoElement(todo) {
       todoContent.textContent = title;
       todoContent.blur();
     }
+  });
+
+  // テキスト選択時にドラッグが発動しないようにする
+  todoContent.addEventListener("mouseenter", () => {
+    div.draggable = false;
+  });
+  todoContent.addEventListener("mouseleave", () => {
+    div.draggable = true;
   });
 
   // イベントリスナー用に変数を準備
@@ -1065,11 +1111,42 @@ async function addTodo() {
       },
     };
 
-    // ステータスプロパティがある場合は「未着手」をセット
+    // ステータスプロパティがある場合、利用可能なオプションから適切なものを選択
     if (activeStatusKey) {
-      properties[activeStatusKey] = {
-        status: { name: "未着手" },
-      };
+      const statusProp = dbData.properties[activeStatusKey];
+      if (statusProp && statusProp.status && statusProp.status.options) {
+        // 利用可能なステータスオプションを取得
+        const options = statusProp.status.options;
+        
+        // 優先順位: 「未着手」→「Not started」→「ToDo」→「To do」→ 最初のオプション
+        const preferredNames = ['未着手', 'Not started', 'ToDo', 'To do', '未開始'];
+        let selectedStatus = null;
+        
+        for (const name of preferredNames) {
+          const found = options.find(opt => opt.name === name);
+          if (found) {
+            selectedStatus = found.name;
+            break;
+          }
+        }
+        
+        // 優先順位のどれも見つからなければ、完了グループ以外の最初のオプションを使用
+        if (!selectedStatus && options.length > 0) {
+          const groups = statusProp.status.groups || [];
+          const completeGroupIds = groups
+            .filter(g => g.name === 'Complete' || g.name === 'Completed' || g.name === '完了')
+            .map(g => g.id);
+          
+          const nonCompleteOption = options.find(opt => !completeGroupIds.includes(opt.group_id));
+          selectedStatus = nonCompleteOption ? nonCompleteOption.name : options[0].name;
+        }
+        
+        if (selectedStatus) {
+          properties[activeStatusKey] = {
+            status: { name: selectedStatus },
+          };
+        }
+      }
     }
 
     const response = await fetch("https://api.notion.com/v1/pages", {
@@ -1080,7 +1157,7 @@ async function addTodo() {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        parent: { database_id: getActiveDatabaseId() },
+        parent: { database_id: normalizeDatabaseId(getActiveDatabaseId()) },
         properties: properties,
       }),
     });
