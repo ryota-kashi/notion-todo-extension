@@ -9,8 +9,8 @@ let todos = [];
 let showAllDatabases = false;
 const databaseSchemas = {};
 let titlePropertyName = ""; // 後方互換性のため維持(後で削除or更新)
-
-
+let isDateSortEnabled = true; // デフォルトは日付順ソート有効
+let manualOrder = []; // 手動並び替え順序のキャッシュ
 
 // ロールアップから値を抽出するヘルパー
 // ロールアップから値を抽出するヘルパー
@@ -19,35 +19,47 @@ function getRollupValue(rollup) {
 
   // 配列型の処理 (show_originalの場合など)
   if (rollup.type === "array") {
-    return rollup.array.map(item => {
-      if (item.type === "title" && item.title) return item.title.map(t => t.plain_text).join("");
-      if (item.type === "rich_text" && item.rich_text) return item.rich_text.map(t => t.plain_text).join("");
-      if (item.type === "people" && item.people) return item.people.name || "User";
-      if (item.type === "select" && item.select) return item.select.name;
-      if (item.type === "multi_select" && item.multi_select) return item.multi_select.map(o => o.name).join(", ");
-      if (item.type === "status" && item.status) return item.status.name;
-      if (item.type === "date" && item.date) return formatDate(item.date.start);
-      if (item.type === "number" && item.number !== null) return item.number;
-      if (item.type === "url" && item.url) return item.url;
-      if (item.type === "email" && item.email) return item.email;
-      if (item.type === "phone_number" && item.phone_number) return item.phone_number;
-      if (item.type === "checkbox") return item.checkbox ? "✅" : "⬜";
-      if (item.type === "files" && item.files) return item.files.length > 0 ? "📎" : "";
-      
-      // Formulaの処理
-      if (item.type === "formula" && item.formula) {
-        if (item.formula.type === "string") return item.formula.string;
-        if (item.formula.type === "number") return item.formula.number;
-        if (item.formula.type === "boolean") return item.formula.boolean;
-        if (item.formula.type === "date") return formatDate(item.formula.date.start);
-      }
-      
-      return "";
-    }).filter(v => v !== "" && v !== null && v !== undefined).join(", ");
+    return rollup.array
+      .map((item) => {
+        if (item.type === "title" && item.title)
+          return item.title.map((t) => t.plain_text).join("");
+        if (item.type === "rich_text" && item.rich_text)
+          return item.rich_text.map((t) => t.plain_text).join("");
+        if (item.type === "people" && item.people)
+          return item.people.name || "User";
+        if (item.type === "select" && item.select) return item.select.name;
+        if (item.type === "multi_select" && item.multi_select)
+          return item.multi_select.map((o) => o.name).join(", ");
+        if (item.type === "status" && item.status) return item.status.name;
+        if (item.type === "date" && item.date)
+          return formatDate(item.date.start);
+        if (item.type === "number" && item.number !== null) return item.number;
+        if (item.type === "url" && item.url) return item.url;
+        if (item.type === "email" && item.email) return item.email;
+        if (item.type === "phone_number" && item.phone_number)
+          return item.phone_number;
+        if (item.type === "checkbox") return item.checkbox ? "✅" : "⬜";
+        if (item.type === "files" && item.files)
+          return item.files.length > 0 ? "📎" : "";
+
+        // Formulaの処理
+        if (item.type === "formula" && item.formula) {
+          if (item.formula.type === "string") return item.formula.string;
+          if (item.formula.type === "number") return item.formula.number;
+          if (item.formula.type === "boolean") return item.formula.boolean;
+          if (item.formula.type === "date")
+            return formatDate(item.formula.date.start);
+        }
+
+        return "";
+      })
+      .filter((v) => v !== "" && v !== null && v !== undefined)
+      .join(", ");
   }
 
   // 単一値の処理 (計算結果など)
-  if (rollup.type === "date" && rollup.date) return formatDate(rollup.date.start);
+  if (rollup.type === "date" && rollup.date)
+    return formatDate(rollup.date.start);
   if (rollup.type === "number" && rollup.number !== null) return rollup.number;
   if (rollup.type === "incomplete") return null; // 計算中の場合など
 
@@ -75,6 +87,19 @@ async function init() {
   config.apiKey = result.apiKey;
   config.databases = result.databases;
 
+  // 並び替え設定と手動順序を読み込む
+  const [sortSetting, savedOrder] = await new Promise((resolve) => {
+    chrome.storage.local.get(["isDateSortEnabled", "manualOrder"], (res) => {
+      resolve([
+        res.isDateSortEnabled !== undefined ? res.isDateSortEnabled : true,
+        res.manualOrder || [],
+      ]);
+    });
+  });
+  isDateSortEnabled = sortSetting;
+  manualOrder = savedOrder;
+  updateSortButtonIcon();
+
   if (!config.apiKey || config.databases.length === 0) {
     showSetupMessage();
     return;
@@ -99,21 +124,19 @@ async function init() {
 
     hideSetupMessage();
     await loadTodos();
-    
-    
   });
 }
 
 // セレクターUIの描画
 function renderDbSelector() {
   elements.dbSelector.innerHTML = "";
-  
+
   // 「すべて表示」オプションを追加
   const allOption = document.createElement("option");
   allOption.value = "__ALL__";
   allOption.textContent = "📋 すべて表示";
   elements.dbSelector.appendChild(allOption);
-  
+
   // 各データベースのオプションを追加
   config.databases.forEach((db) => {
     const option = document.createElement("option");
@@ -126,7 +149,7 @@ function renderDbSelector() {
 // DB切り替えイベント
 elements.dbSelector.addEventListener("change", async (e) => {
   const newId = e.target.value;
-  
+
   // 「すべて表示」が選択された場合
   if (newId === "__ALL__") {
     showAllDatabases = true;
@@ -138,7 +161,7 @@ elements.dbSelector.addEventListener("change", async (e) => {
     chrome.storage.local.set({ activeDatabaseId: newId });
     elements.addTaskForm.style.display = "flex"; // タスク追加フォームを表示
   }
-  
+
   titlePropertyName = ""; // キャッシュをクリア
   await loadTodos();
 });
@@ -159,7 +182,6 @@ async function loadConfig() {
         resolve({
           apiKey: (result.notionApiKey || "").trim(),
           databases: databases,
-
         });
       },
     );
@@ -170,7 +192,7 @@ async function loadConfig() {
 function normalizeDatabaseId(id) {
   if (!id) return id;
   // すでにハイフンが含まれている場合はそのまま返す
-  if (id.includes('-')) return id;
+  if (id.includes("-")) return id;
   // ハイフンなしの32文字の場合、UUID形式に変換
   // xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
   if (id.length === 32) {
@@ -193,21 +215,18 @@ async function getDatabaseSchema(dbId) {
 
   if (databaseSchemas[dbId]) return databaseSchemas[dbId];
 
-  const response = await fetch(
-    `https://api.notion.com/v1/databases/${dbId}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Notion-Version": "2022-06-28",
-      },
+  const response = await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Notion-Version": "2022-06-28",
     },
-  );
+  });
 
   if (!response.ok) {
-      console.error(`Failed to fetch schema for ${dbId}`, response);
-      return null;
-      // throw new Error("スキーマ取得失敗"); // エラーを投げずにnullを返す方が安全かも
+    console.error(`Failed to fetch schema for ${dbId}`, response);
+    return null;
+    // throw new Error("スキーマ取得失敗"); // エラーを投げずにnullを返す方が安全かも
   }
 
   const data = await response.json();
@@ -235,39 +254,43 @@ async function getDatabaseSchema(dbId) {
     // タグ (Multi-select)
     else if (prop.type === "multi_select" && !schema.tagPropertyName) {
       schema.tagPropertyName = name;
-      schema.availableTags = prop.multi_select.options.map(
-        (opt) => opt.name,
-      );
+      schema.availableTags = prop.multi_select.options.map((opt) => opt.name);
     }
     // ステータス
     else if (prop.type === "status" && !schema.statusPropertyName) {
       schema.statusPropertyName = name;
-      
+
       // "Complete" または "完了" グループに属するオプション名を抽出
       if (prop.status && prop.status.groups) {
-        const completeGroups = prop.status.groups.filter(g => 
-          g.name === "Complete" || g.name === "Completed" || g.name === "完了"
+        const completeGroups = prop.status.groups.filter(
+          (g) =>
+            g.name === "Complete" ||
+            g.name === "Completed" ||
+            g.name === "完了",
         );
-        const completeGroupIds = completeGroups.map(g => g.id);
-        
+        const completeGroupIds = completeGroups.map((g) => g.id);
+
         if (prop.status.options) {
-            prop.status.options.forEach(opt => {
-                if (completeGroupIds.includes(opt.group_id) || completeGroups.some(g => g.name === opt.name)) {
-                    schema.completedStatusNames.push(opt.name);
-                }
-            });
+          prop.status.options.forEach((opt) => {
+            if (
+              completeGroupIds.includes(opt.group_id) ||
+              completeGroups.some((g) => g.name === opt.name)
+            ) {
+              schema.completedStatusNames.push(opt.name);
+            }
+          });
         }
       }
       // デフォルト: "Done", "Complete", "完了" は常に完了扱いにする
-      ["Done", "Complete", "Completed", "完了"].forEach(st => {
-          if (!schema.completedStatusNames.includes(st)) {
-              schema.completedStatusNames.push(st);
-          }
+      ["Done", "Complete", "Completed", "完了"].forEach((st) => {
+        if (!schema.completedStatusNames.includes(st)) {
+          schema.completedStatusNames.push(st);
+        }
       });
     }
     // チェックボックス
     else if (prop.type === "checkbox" && !schema.checkboxPropertyName) {
-        schema.checkboxPropertyName = name;
+      schema.checkboxPropertyName = name;
     }
   }
 
@@ -277,7 +300,7 @@ async function getDatabaseSchema(dbId) {
 
   // 後方互換性変数（アクティブなDBの場合のみ更新）
   if (dbId === getActiveDatabaseId()) {
-      titlePropertyName = schema.titlePropertyName;
+    titlePropertyName = schema.titlePropertyName;
   }
 
   return schema;
@@ -289,15 +312,18 @@ async function getDatabaseSchema(dbId) {
 async function loadTodos() {
   // 設定を最新化 (syncストレージから読み込み)
   await new Promise((resolve) => {
-    chrome.storage.local.get(['notionApiKey', 'notionDatabases', 'notionActiveDatabaseId'], (result) => {
-      if (result.notionApiKey) config.apiKey = result.notionApiKey;
-      if (result.notionDatabases) config.databases = result.notionDatabases;
-      // アクティブDBのIDが未設定ならロードしたものを使う
-      if (result.notionActiveDatabaseId && !config.activeDatabaseId) {
-        config.activeDatabaseId = result.notionActiveDatabaseId;
-      }
-      resolve();
-    });
+    chrome.storage.local.get(
+      ["notionApiKey", "notionDatabases", "notionActiveDatabaseId"],
+      (result) => {
+        if (result.notionApiKey) config.apiKey = result.notionApiKey;
+        if (result.notionDatabases) config.databases = result.notionDatabases;
+        // アクティブDBのIDが未設定ならロードしたものを使う
+        if (result.notionActiveDatabaseId && !config.activeDatabaseId) {
+          config.activeDatabaseId = result.notionActiveDatabaseId;
+        }
+        resolve();
+      },
+    );
   });
 
   showLoading();
@@ -313,8 +339,8 @@ async function loadTodos() {
 
     if (targetDbs.length === 0) {
       if (!showAllDatabases && !getActiveDatabaseId()) {
-         console.warn("Database ID is missing.");
-         return;
+        console.warn("Database ID is missing.");
+        return;
       }
     }
 
@@ -325,30 +351,8 @@ async function loadTodos() {
     // 結果を結合
     allTodos = results.flat();
 
-    // 4. ソート
-    todos = allTodos.sort((a, b) => {
-      const aDone = getTodoStatus(a);
-      const bDone = getTodoStatus(b);
-      
-      // 1. 完了状態でソート (未完了が先)
-      if (aDone !== bDone) {
-        return aDone ? 1 : -1;
-      }
-      
-      // 2. 期限でソート (近い順)
-      const aDate = getTodoDueDate(a);
-      const bDate = getTodoDueDate(b);
-      
-      if (aDate && bDate) {
-        // 日付文字列同士の比較でもよいが、Dateオブジェクトにして差分を取るのが確実
-        return new Date(aDate) - new Date(bDate);
-      }
-      if (aDate) return -1; // 期限ありを優先(上へ)
-      if (bDate) return 1;
-      
-      // 3. 作成日時でソート (新しい順)
-      return new Date(b.created_time) - new Date(a.created_time);
-    });
+    // 4. ソート (階層構造を考慮)
+    todos = sortTodosByHierarchy(allTodos);
 
     hideLoading();
     renderTodos();
@@ -363,9 +367,11 @@ async function loadTodos() {
 async function fetchTodosFromDb(dbId) {
   try {
     // フィルターの構築
-    const dbConfig = config.databases.find(d => d.id.replace(/-/g, '') === dbId.replace(/-/g, ''));
+    const dbConfig = config.databases.find(
+      (d) => d.id.replace(/-/g, "") === dbId.replace(/-/g, ""),
+    );
     const filter = dbConfig ? buildNotionFilter(dbConfig) : undefined;
-    
+
     const requestBody = {
       sorts: [
         {
@@ -374,7 +380,7 @@ async function fetchTodosFromDb(dbId) {
         },
       ],
     };
-    
+
     if (filter) {
       requestBody.filter = filter;
     }
@@ -393,10 +399,10 @@ async function fetchTodosFromDb(dbId) {
     );
 
     if (!response.ok) {
-        console.warn(`Failed to fetch from DB ${dbId}: ${response.status}`);
-        return [];
+      console.warn(`Failed to fetch from DB ${dbId}: ${response.status}`);
+      return [];
     }
-    
+
     const data = await response.json();
 
     // スキーマ確保
@@ -422,10 +428,9 @@ async function fetchTodosFromDb(dbId) {
       // 完了済みタスクは除外
       return !getTodoStatus(page); // getTodoStatus now supports mixed DBs
     });
-
   } catch (e) {
-      console.error(`Error fetching DB ${dbId}`, e);
-      return [];
+    console.error(`Error fetching DB ${dbId}`, e);
+    return [];
   }
 }
 
@@ -469,16 +474,18 @@ function createTodoElement(todo) {
 
   // このTODOが属するデータベースの表示設定を取得
   const dbId = todo.parent.database_id;
-  const db = config.databases.find(d => d.id.replace(/-/g, '') === dbId.replace(/-/g, ''));
-  
+  const db = config.databases.find(
+    (d) => d.id.replace(/-/g, "") === dbId.replace(/-/g, ""),
+  );
+
   // visiblePropertiesを取得(後方互換性のため、displaySettingsも考慮)
   let visibleProperties = db?.visibleProperties;
-  
+
   // 後方互換性: displaySettingsが存在する場合は全プロパティを表示
   if (!visibleProperties && db?.displaySettings) {
     visibleProperties = null; // nullの場合は全プロパティ表示
   }
-  
+
   // プロパティが表示可能かチェックする関数
   const isPropertyVisible = (propName) => {
     if (!visibleProperties) return true; // 設定がない場合は全表示
@@ -487,47 +494,62 @@ function createTodoElement(todo) {
 
   // 各プロパティを取得(プロパティ名も一緒に)
   const properties = {};
-  
+
   for (const [propName, prop] of Object.entries(todo.properties)) {
-    if (prop.type === 'date') {
-      properties[propName] = { type: 'date', value: prop.date ? prop.date.start : null };
-    } else if (prop.type === 'multi_select' || prop.type === 'select') {
+    if (prop.type === "date") {
+      properties[propName] = {
+        type: "date",
+        value: prop.date ? prop.date.start : null,
+      };
+    } else if (prop.type === "multi_select" || prop.type === "select") {
       let tags = [];
-       if (prop.type === 'multi_select' && prop.multi_select) {
-          tags = prop.multi_select.map(t => t.name);
-       } else if (prop.type === 'select' && prop.select) {
-          tags = [prop.select.name];
-       }
-       properties[propName] = { type: 'tags', value: tags.length > 0 ? tags : null };
-    
-    } else if (prop.type === 'rich_text' && prop.rich_text && prop.rich_text.length > 0) {
-      properties[propName] = { type: 'rich_text', value: prop.rich_text[0].plain_text };
-    } else if (prop.type === 'number' && prop.number !== null) {
-      properties[propName] = { type: 'number', value: prop.number };
-    } else if (prop.type === 'people') {
+      if (prop.type === "multi_select" && prop.multi_select) {
+        tags = prop.multi_select.map((t) => t.name);
+      } else if (prop.type === "select" && prop.select) {
+        tags = [prop.select.name];
+      }
+      properties[propName] = {
+        type: "tags",
+        value: tags.length > 0 ? tags : null,
+      };
+    } else if (
+      prop.type === "rich_text" &&
+      prop.rich_text &&
+      prop.rich_text.length > 0
+    ) {
+      properties[propName] = {
+        type: "rich_text",
+        value: prop.rich_text[0].plain_text,
+      };
+    } else if (prop.type === "number" && prop.number !== null) {
+      properties[propName] = { type: "number", value: prop.number };
+    } else if (prop.type === "people") {
       let people = [];
       if (prop.people && prop.people.length > 0) {
-         people = prop.people.map(p => ({
-           id: p.id,
-           name: p.name || (p.object === 'user' ? 'User' : 'Unknown')
-         }));
+        people = prop.people.map((p) => ({
+          id: p.id,
+          name: p.name || (p.object === "user" ? "User" : "Unknown"),
+        }));
       }
-      properties[propName] = { type: 'people', value: people.length > 0 ? people : null };
-    } else if (prop.type === 'url' && prop.url) {
-      properties[propName] = { type: 'url', value: prop.url };
-    } else if (prop.type === 'rollup' && prop.rollup) {
+      properties[propName] = {
+        type: "people",
+        value: people.length > 0 ? people : null,
+      };
+    } else if (prop.type === "url" && prop.url) {
+      properties[propName] = { type: "url", value: prop.url };
+    } else if (prop.type === "rollup" && prop.rollup) {
       const value = getRollupValue(prop.rollup);
       if (value !== null && value !== undefined && value !== "") {
-        properties[propName] = { type: 'rollup', value: value };
+        properties[propName] = { type: "rollup", value: value };
       }
-    } else if (prop.type === 'checkbox') {
+    } else if (prop.type === "checkbox") {
       // 完了フラグ用のチェックボックスは除外（名前で判定）
-      const isStatusCheckbox = ['Done', '完了', 'Completed', 'Finished'].some(name => 
-        name.toLowerCase() === propName.toLowerCase()
+      const isStatusCheckbox = ["Done", "完了", "Completed", "Finished"].some(
+        (name) => name.toLowerCase() === propName.toLowerCase(),
       );
-      
+
       if (!isStatusCheckbox && prop.checkbox) {
-         properties[propName] = { type: 'checkbox', value: true };
+        properties[propName] = { type: "checkbox", value: true };
       }
     }
   }
@@ -540,62 +562,66 @@ function createTodoElement(todo) {
     // 各プロパティを表示
     for (const [propName, propData] of Object.entries(properties)) {
       if (!isPropertyVisible(propName)) continue;
-      
-      if (propData.type === 'date') {
+
+      if (propData.type === "date") {
         if (propData.value) {
-          const isOverdue = new Date(propData.value) < new Date() && !isCompleted;
+          const isOverdue =
+            new Date(propData.value) < new Date() && !isCompleted;
           const dueDateClass = isOverdue ? "due-date overdue" : "due-date";
           metaHtml += `<span class="${dueDateClass}" data-edit-type="duedate" data-edit-prop="${propName}">📅 ${formatDate(propData.value)}</span>`;
         } else {
-           metaHtml += `<span class="add-prop-btn" data-edit-type="duedate" data-edit-prop="${propName}">📅 +</span>`;
+          metaHtml += `<span class="add-prop-btn" data-edit-type="duedate" data-edit-prop="${propName}">📅 +</span>`;
         }
-      } else if (propData.type === 'tags') {
+      } else if (propData.type === "tags") {
         if (propData.value) {
           propData.value.forEach((tag) => {
             metaHtml += `<span class="tag" data-edit-type="tag" data-edit-prop="${propName}">${tag}</span>`;
           });
         } else {
-           metaHtml += `<span class="add-prop-btn" data-edit-type="tag" data-edit-prop="${propName}">🏷️ +</span>`;
+          metaHtml += `<span class="add-prop-btn" data-edit-type="tag" data-edit-prop="${propName}">🏷️ +</span>`;
         }
-
-      } else if (propData.type === 'rich_text') {
+      } else if (propData.type === "rich_text") {
         metaHtml += `<span class="rich-text-tag">📝 ${escapeHtml(propData.value)}</span>`;
-      } else if (propData.type === 'number') {
+      } else if (propData.type === "number") {
         metaHtml += `<span class="number-tag">🔢 ${propData.value}</span>`;
-      } else if (propData.type === 'people') {
+      } else if (propData.type === "people") {
         if (propData.value) {
           propData.value.forEach((person) => {
             metaHtml += `<span class="people-tag" data-edit-type="people" data-edit-prop="${propName}">👤 ${escapeHtml(person.name)}</span>`;
           });
         } else {
-           metaHtml += `<span class="add-prop-btn" data-edit-type="people" data-edit-prop="${propName}">👤 +</span>`;
+          metaHtml += `<span class="add-prop-btn" data-edit-type="people" data-edit-prop="${propName}">👤 +</span>`;
         }
-      } else if (propData.type === 'url') {
-        const shortUrl = propData.value.length > 30 ? propData.value.substring(0, 30) + "..." : propData.value;
+      } else if (propData.type === "url") {
+        const shortUrl =
+          propData.value.length > 30
+            ? propData.value.substring(0, 30) + "..."
+            : propData.value;
         metaHtml += `<a href="${propData.value}" target="_blank" class="url-tag" title="${propData.value}">📎 ${escapeHtml(shortUrl)}</a>`;
-      } else if (propData.type === 'rollup') {
-        const shortValue = propData.value.length > 20 ? propData.value.substring(0, 20) + "..." : propData.value;
+      } else if (propData.type === "rollup") {
+        const shortValue =
+          propData.value.length > 20
+            ? propData.value.substring(0, 20) + "..."
+            : propData.value;
         metaHtml += `<span class="tag rollup-tag" title="${escapeHtml(propData.value)}">🔗 ${escapeHtml(shortValue)}</span>`;
-      } else if (propData.type === 'checkbox') {
+      } else if (propData.type === "checkbox") {
         metaHtml += `<span class="checkbox-tag">✅ ${escapeHtml(propName)}</span>`;
       }
     }
 
     metaHtml += "</div>";
   }
-  
-
 
   // 親子関係（サブアイテム）の取得
   let parentItemName = null;
   let isSubItem = false;
-  
+
   // 親アイテムのリレーションを探す（通常は 'Parent item' や '親アイテム' という名前）
   for (const [propName, prop] of Object.entries(todo.properties)) {
-    if (prop.type === 'relation' && prop.relation && prop.relation.length > 0) {
+    if (prop.type === "relation" && prop.relation && prop.relation.length > 0) {
       // プロパティ名に 'parent' や '親' が含まれるものを優先的にチェック
       const lowerName = propName.toLowerCase();
-      if (lowerName.includes('parent') || lowerName.includes('親')) {
+      if (lowerName.includes("parent") || lowerName.includes("親")) {
         isSubItem = true;
         // 親のタイトル名が同期されているか確認（将来的な拡張用、現状は存在チェックのみ）
         break;
@@ -605,12 +631,25 @@ function createTodoElement(todo) {
 
   if (isSubItem) {
     div.classList.add("sub-item");
+    // 親IDをdatasetに追加 (最初に見つかった親relationを使用)
+    const parentId = getParentId(todo);
+    div.dataset.parentId = parentId;
+  }
+
+  // 親アイテムかつ子供がいる場合、トグルボタンを追加
+  let toggleBtnHtml = "";
+  if (todo.hasChildren) {
+    toggleBtnHtml = '<span class="toggle-sub-items">▼</span>';
+    div.classList.add("has-children");
   }
 
   div.innerHTML = `
     <div class="todo-text">
-      <div class="todo-content" contenteditable="true" spellcheck="false">
-        ${isSubItem ? '<span class="sub-item-icon">↳</span>' : ''}${escapeHtml(title)}
+      <div class="todo-main-row">
+        ${toggleBtnHtml}
+        <div class="todo-content" contenteditable="true" spellcheck="false">
+          ${escapeHtml(title)}
+        </div>
       </div>
       ${metaHtml}
     </div>
@@ -620,10 +659,33 @@ function createTodoElement(todo) {
     </button>
   `;
 
+  // トグルボタンのイベントリスナー
+  if (todo.hasChildren) {
+    const toggleBtn = div.querySelector(".toggle-sub-items");
+    toggleBtn.addEventListener("click", (e) => {
+      e.stopPropagation(); // テキスト編集やカードクリックへの伝播を防ぐ
+
+      const isExpanded = toggleBtn.textContent === "▼";
+      toggleBtn.textContent = isExpanded ? "▶" : "▼";
+
+      // 子要素の表示/非表示を切り替え
+      const children = document.querySelectorAll(
+        `.todo-item[data-parent-id="${todo.id}"]`,
+      );
+      children.forEach((child) => {
+        child.style.display = isExpanded ? "none" : "flex";
+      });
+    });
+  }
+
   // カード全体をクリックしたらNotionページを開く
   div.addEventListener("click", (e) => {
     // 完了ボタン、カレンダーボタン、またはコンテンツ編集エリアをクリックした場合は除外
-    if (e.target.closest(".done-btn") || e.target.closest(".calendar-btn") || e.target.closest(".todo-content")) {
+    if (
+      e.target.closest(".done-btn") ||
+      e.target.closest(".calendar-btn") ||
+      e.target.closest(".todo-content")
+    ) {
       return;
     }
 
@@ -631,7 +693,7 @@ function createTodoElement(todo) {
       chrome.tabs.create({ url: todo.url });
     }
   });
-  
+
   // カーソルをポインターに変更
   div.style.cursor = "pointer";
 
@@ -667,9 +729,6 @@ function createTodoElement(todo) {
     }
   });
 
-
-
-
   todoContent.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -681,41 +740,29 @@ function createTodoElement(todo) {
     }
   });
 
-  // テキスト選択時にドラッグが発動しないようにする
-  todoContent.addEventListener("mouseenter", () => {
-    div.draggable = false;
-  });
-  todoContent.addEventListener("mouseleave", () => {
-    div.draggable = true;
-  });
-
   // イベントリスナー用に変数を準備
   let dueDate = null;
   let tags = [];
 
-
-
   // propertiesから値を抽出
   for (const [key, data] of Object.entries(properties)) {
-    if (data.type === 'date') dueDate = data.value;
-    else if (data.type === 'tags') tags = data.value;
-
-
+    if (data.type === "date") dueDate = data.value;
+    else if (data.type === "tags") tags = data.value;
   }
 
   // 期日・タグ編集のクリックイベント
-  const metaElements = div.querySelectorAll('[data-edit-type]');
-  metaElements.forEach(element => {
-    element.addEventListener('click', (e) => {
+  const metaElements = div.querySelectorAll("[data-edit-type]");
+  metaElements.forEach((element) => {
+    element.addEventListener("click", (e) => {
       e.stopPropagation();
       const editType = element.dataset.editType;
       const propName = element.dataset.editProp;
-      
-      if (editType === 'duedate') {
+
+      if (editType === "duedate") {
         openDueDateModal(todo.id, dueDate, propName); // propNameを追加
-      } else if (editType === 'tag') {
+      } else if (editType === "tag") {
         openTagModal(todo.id, propName);
-      } else if (editType === 'people') {
+      } else if (editType === "people") {
         openPeopleModal(todo.id, propName);
       }
     });
@@ -731,42 +778,42 @@ function createTodoElement(todo) {
 async function updateTodoTitle(todoId, newTitle) {
   try {
     // 対象のTODOを特定
-    const todo = todos.find(t => t.id === todoId);
+    const todo = todos.find((t) => t.id === todoId);
     if (!todo) return;
 
     const dbId = todo.parent.database_id;
-    
+
     // スキーマを取得
     let schema = databaseSchemas[dbId];
     if (!schema) {
-        schema = await getDatabaseSchema(dbId);
+      schema = await getDatabaseSchema(dbId);
     }
-    
-    let titleKey = schema ? schema.titlePropertyName : null;
-    
-    if (!titleKey) {
-        // フォールバック: プロパティをスキャン
-        // データベース情報を取得
-        const dbResponse = await fetch(
-          `https://api.notion.com/v1/databases/${dbId}`,
-          {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${config.apiKey}`,
-              "Notion-Version": "2022-06-28",
-            },
-          },
-        );
 
-        if (!dbResponse.ok) throw new Error("DBプロパティの取得に失敗しました");
-        const dbData = await dbResponse.json();
-        
-        for (const [name, prop] of Object.entries(dbData.properties)) {
-          if (prop.type === "title") {
-            titleKey = name;
-            break;
-          }
+    let titleKey = schema ? schema.titlePropertyName : null;
+
+    if (!titleKey) {
+      // フォールバック: プロパティをスキャン
+      // データベース情報を取得
+      const dbResponse = await fetch(
+        `https://api.notion.com/v1/databases/${dbId}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${config.apiKey}`,
+            "Notion-Version": "2022-06-28",
+          },
+        },
+      );
+
+      if (!dbResponse.ok) throw new Error("DBプロパティの取得に失敗しました");
+      const dbData = await dbResponse.json();
+
+      for (const [name, prop] of Object.entries(dbData.properties)) {
+        if (prop.type === "title") {
+          titleKey = name;
+          break;
         }
+      }
     }
 
     const response = await fetch(`https://api.notion.com/v1/pages/${todoId}`, {
@@ -823,10 +870,10 @@ function getTodoStatus(todo) {
     }
     // チェックボックスプロパティがある場合
     if (schema.checkboxPropertyName) {
-        const prop = todo.properties[schema.checkboxPropertyName];
-        if (prop && prop.type === "checkbox") {
-            return prop.checkbox;
-        }
+      const prop = todo.properties[schema.checkboxPropertyName];
+      if (prop && prop.type === "checkbox") {
+        return prop.checkbox;
+      }
     }
   }
 
@@ -835,7 +882,11 @@ function getTodoStatus(todo) {
     // ステータス型（最優先）
     if (prop.type === "status" && prop.status) {
       // 「完了」の場合は表示しない
-      return prop.status.name === "完了" || prop.status.name === "Done" || prop.status.name === "Completed";
+      return (
+        prop.status.name === "完了" ||
+        prop.status.name === "Done" ||
+        prop.status.name === "Completed"
+      );
     }
     // チェックボックス型
     if (prop.type === "checkbox") {
@@ -890,7 +941,11 @@ function getTodoRelations(todo) {
 // リッチテキストを取得
 function getTodoRichText(todo) {
   for (const prop of Object.values(todo.properties)) {
-    if (prop.type === "rich_text" && prop.rich_text && prop.rich_text.length > 0) {
+    if (
+      prop.type === "rich_text" &&
+      prop.rich_text &&
+      prop.rich_text.length > 0
+    ) {
       return prop.rich_text[0].plain_text;
     }
   }
@@ -935,7 +990,10 @@ function getTodoCheckboxes(todo) {
   const checkboxes = [];
   for (const [name, prop] of Object.entries(todo.properties)) {
     // 完了状態として使われているチェックボックスは除外
-    if (prop.type === "checkbox" && !["Done", "完了", "Completed"].includes(name)) {
+    if (
+      prop.type === "checkbox" &&
+      !["Done", "完了", "Completed"].includes(name)
+    ) {
       if (prop.checkbox) {
         checkboxes.push(name);
       }
@@ -993,7 +1051,7 @@ async function toggleTodo(todoId, checked) {
     const dbId = todo.parent.database_id;
     let schema = databaseSchemas[dbId];
     if (!schema) {
-        schema = await getDatabaseSchema(dbId);
+      schema = await getDatabaseSchema(dbId);
     }
 
     // ステータス型があるか確認
@@ -1001,11 +1059,11 @@ async function toggleTodo(todoId, checked) {
     let checkboxKey = schema ? schema.checkboxPropertyName : null;
 
     if (!statusKey && !checkboxKey) {
-        // フォールバック: プロパティをスキャン
-        for (const [key, value] of Object.entries(todo.properties)) {
-          if (value.type === "status") statusKey = key;
-          if (value.type === "checkbox") checkboxKey = key;
-        }
+      // フォールバック: プロパティをスキャン
+      for (const [key, value] of Object.entries(todo.properties)) {
+        if (value.type === "status") statusKey = key;
+        if (value.type === "checkbox") checkboxKey = key;
+      }
     }
 
     if (statusKey) {
@@ -1117,30 +1175,45 @@ async function addTodo() {
       if (statusProp && statusProp.status && statusProp.status.options) {
         // 利用可能なステータスオプションを取得
         const options = statusProp.status.options;
-        
+
         // 優先順位: 「未着手」→「Not started」→「ToDo」→「To do」→ 最初のオプション
-        const preferredNames = ['未着手', 'Not started', 'ToDo', 'To do', '未開始'];
+        const preferredNames = [
+          "未着手",
+          "Not started",
+          "ToDo",
+          "To do",
+          "未開始",
+        ];
         let selectedStatus = null;
-        
+
         for (const name of preferredNames) {
-          const found = options.find(opt => opt.name === name);
+          const found = options.find((opt) => opt.name === name);
           if (found) {
             selectedStatus = found.name;
             break;
           }
         }
-        
+
         // 優先順位のどれも見つからなければ、完了グループ以外の最初のオプションを使用
         if (!selectedStatus && options.length > 0) {
           const groups = statusProp.status.groups || [];
           const completeGroupIds = groups
-            .filter(g => g.name === 'Complete' || g.name === 'Completed' || g.name === '完了')
-            .map(g => g.id);
-          
-          const nonCompleteOption = options.find(opt => !completeGroupIds.includes(opt.group_id));
-          selectedStatus = nonCompleteOption ? nonCompleteOption.name : options[0].name;
+            .filter(
+              (g) =>
+                g.name === "Complete" ||
+                g.name === "Completed" ||
+                g.name === "完了",
+            )
+            .map((g) => g.id);
+
+          const nonCompleteOption = options.find(
+            (opt) => !completeGroupIds.includes(opt.group_id),
+          );
+          selectedStatus = nonCompleteOption
+            ? nonCompleteOption.name
+            : options[0].name;
         }
-        
+
         if (selectedStatus) {
           properties[activeStatusKey] = {
             status: { name: selectedStatus },
@@ -1197,18 +1270,19 @@ function hideLoading() {
   elements.loading.style.display = "none";
 }
 
-function showMessage(message, type = 'error') {
+function showMessage(message, type = "error") {
   elements.errorMessage.textContent = message;
-  elements.errorMessage.className = type === 'success' ? 'success-message' : 'error-message';
+  elements.errorMessage.className =
+    type === "success" ? "success-message" : "error-message";
   elements.errorMessage.style.display = "block";
-  
-  if (type === 'success') {
+
+  if (type === "success") {
     setTimeout(hideError, 3000);
   }
 }
 
 function showError(message) {
-  showMessage(message, 'error');
+  showMessage(message, "error");
 }
 
 function hideError() {
@@ -1227,74 +1301,74 @@ function escapeHtml(text) {
 function openDueDateModal(todoId, currentDate, propName) {
   editingTodoId = todoId;
   editingPropName = propName; // グローバル変数にセット
-  
-  const modal = document.getElementById('dueDateModal');
-  const input = document.getElementById('dueDateInput');
-  
+
+  const modal = document.getElementById("dueDateModal");
+  const input = document.getElementById("dueDateInput");
+
   if (currentDate) {
     input.value = currentDate;
   } else {
     // 今日をデフォルトに
     const today = new Date();
     const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
     input.value = `${year}-${month}-${day}`;
   }
-  
-  modal.style.display = 'flex';
+
+  modal.style.display = "flex";
 }
 
 // リレーションIDを取得
 
-
 // 期日を保存
 
-    
 // 共通レンダーヘッダー
 function updateTodoDateDOM(todoId, newDate) {
   const todoEl = document.querySelector(`.todo-item[data-id="${todoId}"]`);
   if (!todoEl) return;
-  
+
   // 既存の日付タグを探す
   let dateTag = todoEl.querySelector('[data-edit-type="duedate"]');
   const propName = dateTag ? dateTag.dataset.editProp : null;
-  
+
   // プロパティ名が分からない場合（まだタグがない場合など）、再描画したほうが安全だが
   // 今回は簡易的にメタエリアに追加または更新する。
   // しかしプロパティ名が必要。editingPropNameがあるはず。
-  
+
   // 既存タグがあれば内容更新
   if (dateTag) {
-     if (newDate) {
-       dateTag.innerHTML = `📅 ${formatDate(newDate)}`;
-       // Overdue check
-       const isOverdue = new Date(newDate) < new Date();
-       dateTag.className = isOverdue ? "due-date overdue" : "due-date";
-     } else {
-       // 日付削除されたら + ボタンに戻す
-       const prop = dateTag.dataset.editProp;
-       // outerHTMLで置換
-       dateTag.outerHTML = `<span class="add-prop-btn" data-edit-type="duedate" data-edit-prop="${prop}">📅 +</span>`;
-       // イベントリスナーが消えるので再付与が必要だが、親のイベントデリゲーションがないため
-       // createTodoElement内で個別に付与している。
-       // したがって、個別に付与しなおす必要がある。
-       // これは面倒なので、いっそそのTodoだけ再レンダリングする関数を作る方が良いが、
-       // ここでは簡易的に、リスト全体のリロードの代わりに「このTodoだけデータ更新して再描画」する戦略をとるべきか？
-       // データ更新するには todos 配列を更新する必要がある。
-     }
+    if (newDate) {
+      dateTag.innerHTML = `📅 ${formatDate(newDate)}`;
+      // Overdue check
+      const isOverdue = new Date(newDate) < new Date();
+      dateTag.className = isOverdue ? "due-date overdue" : "due-date";
+    } else {
+      // 日付削除されたら + ボタンに戻す
+      const prop = dateTag.dataset.editProp;
+      // outerHTMLで置換
+      dateTag.outerHTML = `<span class="add-prop-btn" data-edit-type="duedate" data-edit-prop="${prop}">📅 +</span>`;
+      // イベントリスナーが消えるので再付与が必要だが、親のイベントデリゲーションがないため
+      // createTodoElement内で個別に付与している。
+      // したがって、個別に付与しなおす必要がある。
+      // これは面倒なので、いっそそのTodoだけ再レンダリングする関数を作る方が良いが、
+      // ここでは簡易的に、リスト全体のリロードの代わりに「このTodoだけデータ更新して再描画」する戦略をとるべきか？
+      // データ更新するには todos 配列を更新する必要がある。
+    }
   } else {
-     // +ボタンだった場合
-     const addBtn = todoEl.querySelector(`.add-prop-btn[data-edit-type="duedate"]`);
-     if (addBtn && newDate) {
-        const prop = addBtn.dataset.editProp;
-        const isOverdue = new Date(newDate) < new Date();
-        const cls = isOverdue ? "due-date overdue" : "due-date";
-        const newTagHtml = `<span class="${cls}" data-edit-type="duedate" data-edit-prop="${prop}">📅 ${formatDate(newDate)}</span>`;
-        addBtn.outerHTML = newTagHtml;
-     }
+    // +ボタンだった場合
+    const addBtn = todoEl.querySelector(
+      `.add-prop-btn[data-edit-type="duedate"]`,
+    );
+    if (addBtn && newDate) {
+      const prop = addBtn.dataset.editProp;
+      const isOverdue = new Date(newDate) < new Date();
+      const cls = isOverdue ? "due-date overdue" : "due-date";
+      const newTagHtml = `<span class="${cls}" data-edit-type="duedate" data-edit-prop="${prop}">📅 ${formatDate(newDate)}</span>`;
+      addBtn.outerHTML = newTagHtml;
+    }
   }
-  
+
   // Listener再付与が面倒なので、DOM更新後にクリックイベントが動かなくなる可能性がある。
   // createTodoElementの実装を見ると、`metaElements.forEach...` で付与している。
   // ここで置換してしまうとイベントが消える。
@@ -1304,68 +1378,70 @@ function updateTodoDateDOM(todoId, newDate) {
 }
 
 function reattachMetaListeners(todoEl) {
-    const metaElements = todoEl.querySelectorAll('[data-edit-type]');
-    metaElements.forEach(element => {
-      // 既存のリスナーを削除するのは難しいので、クローンして置換することで削除
-      const newEl = element.cloneNode(true);
-      element.parentNode.replaceChild(newEl, element);
-      
-      newEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const editType = newEl.dataset.editType;
-        const propName = newEl.dataset.editProp;
-        const todoId = todoEl.dataset.id; // 要素から取得
-        const todo = todos.find(t => t.id === todoId); // 最新のtodosを参照
-        
-        if (editType === 'duedate') {
-            // 日付はtodos内の値を参照するが、DOM更新のみでtodos更新していない場合ズレる。
-            // なのでtodosも更新する必要がある。
-            // updateTodoDateInList関数でtodosも更新する。
-            const currentVal = todo.properties[propName]?.date?.start || null;
-            openDueDateModal(todoId, currentVal); 
-        } else if (editType === 'tag') {
-          openTagModal(todoId, propName);
-        } else if (editType === 'people') {
-          openPeopleModal(todoId, propName);
-        }
-      });
+  const metaElements = todoEl.querySelectorAll("[data-edit-type]");
+  metaElements.forEach((element) => {
+    // 既存のリスナーを削除するのは難しいので、クローンして置換することで削除
+    const newEl = element.cloneNode(true);
+    element.parentNode.replaceChild(newEl, element);
+
+    newEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const editType = newEl.dataset.editType;
+      const propName = newEl.dataset.editProp;
+      const todoId = todoEl.dataset.id; // 要素から取得
+      const todo = todos.find((t) => t.id === todoId); // 最新のtodosを参照
+
+      if (editType === "duedate") {
+        // 日付はtodos内の値を参照するが、DOM更新のみでtodos更新していない場合ズレる。
+        // なのでtodosも更新する必要がある。
+        // updateTodoDateInList関数でtodosも更新する。
+        const currentVal = todo.properties[propName]?.date?.start || null;
+        openDueDateModal(todoId, currentVal);
+      } else if (editType === "tag") {
+        openTagModal(todoId, propName);
+      } else if (editType === "people") {
+        openPeopleModal(todoId, propName);
+      }
     });
+  });
 }
 
 // 配列内のデータを更新するヘルパー
 function updateLocalTodoData(todoId, propName, type, value) {
-    const todo = todos.find(t => t.id === todoId);
-    if (!todo) return;
-    
-    if (!todo.properties[propName]) {
-        // プロパティ自体がない場合のコンストラクタ的な処理が必要だが
-        // 通常はキーはある。
-        todo.properties[propName] = {};
-    }
-    
-    if (type === 'date') {
-        todo.properties[propName] = { type: 'date', date: value ? { start: value } : null };
-    } else if (type === 'people') {
-       todo.properties[propName] = { type: 'people', people: value }; // value is array of objects
-    } else if (type === 'tags') {
-       // tagsの場合は select/multi_select で構造が違うので注意
-       // saveTags側で適切に処理する必要がある
-    }
-}
+  const todo = todos.find((t) => t.id === todoId);
+  if (!todo) return;
 
+  if (!todo.properties[propName]) {
+    // プロパティ自体がない場合のコンストラクタ的な処理が必要だが
+    // 通常はキーはある。
+    todo.properties[propName] = {};
+  }
+
+  if (type === "date") {
+    todo.properties[propName] = {
+      type: "date",
+      date: value ? { start: value } : null,
+    };
+  } else if (type === "people") {
+    todo.properties[propName] = { type: "people", people: value }; // value is array of objects
+  } else if (type === "tags") {
+    // tagsの場合は select/multi_select で構造が違うので注意
+    // saveTags側で適切に処理する必要がある
+  }
+}
 
 // 期日を保存
 async function saveDueDate() {
-  const input = document.getElementById('dueDateInput');
+  const input = document.getElementById("dueDateInput");
   const newDate = input.value; // YYYY-MM-DD
-  const btn = document.getElementById('saveDueDateBtn');
-  
+  const btn = document.getElementById("saveDueDateBtn");
+
   if (!editingTodoId) return;
-  
+
   const originalText = btn.textContent;
-  btn.textContent = '保存中...';
+  btn.textContent = "保存中...";
   btn.disabled = true;
-  
+
   try {
     const schema = await getDatabaseSchema();
     // 日付プロパティ名は editingPropName から取得すべきだが、modalを開くときに渡していない？
@@ -1375,39 +1451,41 @@ async function saveDueDate() {
     // 現状の実装: schema.datePropertyName を使っている (L1168)。
     // これだと複数の日付プロパティがある場合にバグる。
     // 今回の修正で openDueDateModal も propName を受け取るように変更する。
-    
+
     if (!schema.datePropertyName) {
-      throw new Error('日付プロパティが見つかりません');
+      throw new Error("日付プロパティが見つかりません");
     }
-    
+
     // editingPropName が null の場合（古いコード経由）、schemaから推測
     const targetProp = editingPropName || schema.datePropertyName;
-    
-    const response = await fetch(`https://api.notion.com/v1/pages/${editingTodoId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json'
+
+    const response = await fetch(
+      `https://api.notion.com/v1/pages/${editingTodoId}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          properties: {
+            [targetProp]: {
+              date: newDate ? { start: newDate } : null,
+            },
+          },
+        }),
       },
-      body: JSON.stringify({
-        properties: {
-          [targetProp]: {
-            date: newDate ? { start: newDate } : null
-          }
-        }
-      })
-    });
-    
-    if (!response.ok) throw new Error('期日更新失敗');
-    
+    );
+
+    if (!response.ok) throw new Error("期日更新失敗");
+
     // 成功したらDOMと内部データを更新
-    updateLocalTodoData(editingTodoId, targetProp, 'date', newDate);
+    updateLocalTodoData(editingTodoId, targetProp, "date", newDate);
     updateTodoDateDOM(editingTodoId, newDate);
-    
+
     closeDueDateModal();
     // await loadTodos(); // 遅延の原因なので削除
-    
   } catch (error) {
     showError(`エラー: ${error.message}`);
   } finally {
@@ -1416,39 +1494,39 @@ async function saveDueDate() {
   }
 }
 
-
-
-
 // 期日を削除
 async function removeDueDate() {
   if (!editingTodoId) return;
-  
+
   try {
     showLoading();
     const schema = await getDatabaseSchema();
-    
+
     if (!schema.datePropertyName) {
-      throw new Error('日付プロパティが見つかりません');
+      throw new Error("日付プロパティが見つかりません");
     }
-    
-    const response = await fetch(`https://api.notion.com/v1/pages/${editingTodoId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json'
+
+    const response = await fetch(
+      `https://api.notion.com/v1/pages/${editingTodoId}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          properties: {
+            [schema.datePropertyName]: {
+              date: null,
+            },
+          },
+        }),
       },
-      body: JSON.stringify({
-        properties: {
-          [schema.datePropertyName]: {
-            date: null
-          }
-        }
-      })
-    });
-    
-    if (!response.ok) throw new Error('期日削除失敗');
-    
+    );
+
+    if (!response.ok) throw new Error("期日削除失敗");
+
     closeDueDateModal();
     await loadTodos();
   } catch (error) {
@@ -1458,7 +1536,7 @@ async function removeDueDate() {
 }
 
 function closeDueDateModal() {
-  document.getElementById('dueDateModal').style.display = 'none';
+  document.getElementById("dueDateModal").style.display = "none";
   editingTodoId = null;
 }
 
@@ -1468,18 +1546,18 @@ function closeDueDateModal() {
 async function openTagModal(todoId, propName) {
   editingTodoId = todoId;
   editingPropName = propName;
-  
+
   try {
-    const todo = todos.find(t => t.id === todoId);
+    const todo = todos.find((t) => t.id === todoId);
     if (!todo) return;
 
     // 現在のタグを取得
     let currentTags = [];
     const prop = todo.properties[propName];
     if (prop) {
-      if (prop.type === 'multi_select' && prop.multi_select) {
-        currentTags = prop.multi_select.map(t => t.name);
-      } else if (prop.type === 'select' && prop.select) {
+      if (prop.type === "multi_select" && prop.multi_select) {
+        currentTags = prop.multi_select.map((t) => t.name);
+      } else if (prop.type === "select" && prop.select) {
         currentTags = [prop.select.name];
       }
     }
@@ -1487,55 +1565,57 @@ async function openTagModal(todoId, propName) {
     const dbId = todo.parent.database_id;
     let schema = databaseSchemas[dbId];
     if (!schema) schema = await getDatabaseSchema(dbId);
-    
+
     // プロパティ定義から選択肢を取得
     const propDef = schema.properties[propName];
     if (!propDef) {
-       showError('プロパティ定義が見つかりません');
-       return;
+      showError("プロパティ定義が見つかりません");
+      return;
     }
 
     let availableTags = [];
-    if (propDef.type === 'multi_select') {
-      availableTags = propDef.multi_select.options.map(o => o.name);
-    } else if (propDef.type === 'select') {
-      availableTags = propDef.select.options.map(o => o.name);
+    if (propDef.type === "multi_select") {
+      availableTags = propDef.multi_select.options.map((o) => o.name);
+    } else if (propDef.type === "select") {
+      availableTags = propDef.select.options.map((o) => o.name);
     }
 
-    const modal = document.getElementById('tagModal');
-    const container = document.getElementById('tagCheckboxes');
-    container.innerHTML = '';
-    
+    const modal = document.getElementById("tagModal");
+    const container = document.getElementById("tagCheckboxes");
+    container.innerHTML = "";
+
     // 利用可能なタグのチェックボックスを生成
-    availableTags.forEach(tag => {
-      const label = document.createElement('label');
-      label.className = 'tag-checkbox-label';
+    availableTags.forEach((tag) => {
+      const label = document.createElement("label");
+      label.className = "tag-checkbox-label";
       // Select型の場合はラジオボタン風の挙動にしたいが、UIはチェックボックスで統一し、JSで制御
       // 今回はシンプルに複数選択UIとする
-      
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
       checkbox.value = tag;
       checkbox.checked = currentTags.includes(tag);
-      
+
       // Select型の場合は単一選択にするためのリスナー
-      if (propDef.type === 'select') {
-         checkbox.addEventListener('change', (e) => {
-            if (e.target.checked) {
-               // 他を外す
-               container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                  if (cb !== e.target) cb.checked = false;
-               });
-            }
-         });
+      if (propDef.type === "select") {
+        checkbox.addEventListener("change", (e) => {
+          if (e.target.checked) {
+            // 他を外す
+            container
+              .querySelectorAll('input[type="checkbox"]')
+              .forEach((cb) => {
+                if (cb !== e.target) cb.checked = false;
+              });
+          }
+        });
       }
-      
+
       label.appendChild(checkbox);
       label.appendChild(document.createTextNode(tag));
       container.appendChild(label);
     });
-    
-    modal.style.display = 'flex';
+
+    modal.style.display = "flex";
   } catch (error) {
     showError(`エラー: ${error.message}`);
   }
@@ -1544,56 +1624,60 @@ async function openTagModal(todoId, propName) {
 // タグを保存
 async function saveTags() {
   if (!editingTodoId || !editingPropName) return;
-  
-  const btn = document.getElementById('saveTagBtn');
+
+  const btn = document.getElementById("saveTagBtn");
   const originalText = btn.textContent;
-  btn.textContent = '保存中...';
+  btn.textContent = "保存中...";
   btn.disabled = true;
 
   try {
     // showLoading(); // モーダル内ローディングに変更
-    
+
     // 選択されたタグを取得
-    const checkboxes = document.querySelectorAll('#tagCheckboxes input[type="checkbox"]');
+    const checkboxes = document.querySelectorAll(
+      '#tagCheckboxes input[type="checkbox"]',
+    );
     const selectedTags = Array.from(checkboxes)
-      .filter(cb => cb.checked)
-      .map(cb => ({ name: cb.value }));
-    
+      .filter((cb) => cb.checked)
+      .map((cb) => ({ name: cb.value }));
+
     // 現在のTODO情報を取得してプロパティタイプを確認
-    const todo = todos.find(t => t.id === editingTodoId);
+    const todo = todos.find((t) => t.id === editingTodoId);
     const propType = todo.properties[editingPropName].type;
 
     let updateBody = {};
-    if (propType === 'select') {
-       updateBody = {
-          select: selectedTags.length > 0 ? selectedTags[0] : null
-       };
+    if (propType === "select") {
+      updateBody = {
+        select: selectedTags.length > 0 ? selectedTags[0] : null,
+      };
     } else {
-       updateBody = {
-          multi_select: selectedTags
-       };
+      updateBody = {
+        multi_select: selectedTags,
+      };
     }
 
-    const response = await fetch(`https://api.notion.com/v1/pages/${editingTodoId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json'
+    const response = await fetch(
+      `https://api.notion.com/v1/pages/${editingTodoId}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          properties: {
+            [editingPropName]: updateBody,
+          },
+        }),
       },
-      body: JSON.stringify({
-        properties: {
-          [editingPropName]: updateBody
-        }
-      })
-    });
-    
-    if (!response.ok) throw new Error('タグ更新失敗');
-    
+    );
+
+    if (!response.ok) throw new Error("タグ更新失敗");
+
     closeTagModal();
     await loadTodos(); // タグの場合はDOM更新が複雑（色情報の欠落など）なので、一旦リロードのままにするか、色情報をキャッシュしていればJS更新可能。
     // 今回は日付のラグが主訴なので、タグはリロードのままで進めるが、ローディングUIは改善する。
-    
   } catch (error) {
     showError(`エラー: ${error.message}`);
   } finally {
@@ -1603,7 +1687,7 @@ async function saveTags() {
 }
 
 function closeTagModal() {
-  document.getElementById('tagModal').style.display = 'none';
+  document.getElementById("tagModal").style.display = "none";
   editingTodoId = null;
   editingPropName = null;
 }
@@ -1614,41 +1698,43 @@ function closeTagModal() {
 async function openPeopleModal(todoId, propName) {
   editingTodoId = todoId;
   editingPropName = propName;
-  
+
   try {
-    const todo = todos.find(t => t.id === todoId);
+    const todo = todos.find((t) => t.id === todoId);
     if (!todo) return;
-    
+
     const dbId = todo.parent.database_id;
     // DB設定からユーザーリストを取得
-    const dbConfig = config.databases.find(d => d.id.replace(/-/g, '') === dbId.replace(/-/g, ''));
+    const dbConfig = config.databases.find(
+      (d) => d.id.replace(/-/g, "") === dbId.replace(/-/g, ""),
+    );
     let users = dbConfig && dbConfig.users ? dbConfig.users : [];
-    
+
     // 現在の担当者を取得
     currentPeopleIds = [];
     const prop = todo.properties[propName];
     if (prop && prop.people) {
-       currentPeopleIds = prop.people.map(p => p.id);
+      currentPeopleIds = prop.people.map((p) => p.id);
     }
 
-    const modal = document.getElementById('peopleModal');
-    const container = document.getElementById('peopleCheckboxes');
-    const searchInput = document.getElementById('peopleSearchInput');
-    
-    searchInput.value = ''; // リセット
-    
+    const modal = document.getElementById("peopleModal");
+    const container = document.getElementById("peopleCheckboxes");
+    const searchInput = document.getElementById("peopleSearchInput");
+
+    searchInput.value = ""; // リセット
+
     // レンダリング関数
-    const renderList = (filterText = '') => {
-      container.innerHTML = '';
-      
+    const renderList = (filterText = "") => {
+      container.innerHTML = "";
+
       // 入力がない場合（かつ未選択）は何も表示しない、または「検索してください」と表示
       // ただし、既に担当者が設定されている場合はその人だけ表示する？
       // 要望によると「候補は出さずに入力後にマッチ思想な人だけを表示」とのこと。
       // なので、空文字の場合は空にする。ただし、現在選択中のユーザーは表示しておきたいかも？
       // 今回はシンプルに「入力がある場合のみ表示」にする。
-      
+
       const lowerFilter = filterText.toLowerCase();
-      
+
       /*
       // 初期表示（入力なし）の場合
       if (!filterText) {
@@ -1663,34 +1749,40 @@ async function openPeopleModal(todoId, propName) {
          }
       }
       */
-      
+
       // フィルタリング処理
       // 1. 選択済みのユーザー（常に表示）
       // 2. 検索条件にマッチするユーザー（選択済み以外）
-      
-      const selectedUsers = users.filter(u => currentPeopleIds.includes(u.id));
-      const matchedUsers = filterText 
-          ? users.filter(u => !currentPeopleIds.includes(u.id) && u.name.toLowerCase().includes(lowerFilter))
-          : []; // 入力がない場合は選択済み以外は表示しない（パフォーマンス対策）
-      
+
+      const selectedUsers = users.filter((u) =>
+        currentPeopleIds.includes(u.id),
+      );
+      const matchedUsers = filterText
+        ? users.filter(
+            (u) =>
+              !currentPeopleIds.includes(u.id) &&
+              u.name.toLowerCase().includes(lowerFilter),
+          )
+        : []; // 入力がない場合は選択済み以外は表示しない（パフォーマンス対策）
+
       // 表示リストを作成（重複なし）
       // 選択済みユーザーは常に先頭に表示
       const displayUsers = [...selectedUsers, ...matchedUsers];
-      
+
       // 最大表示数制限（選択済みは全て出す、検索結果は絞る）
       const maxDisplay = 50;
       if (displayUsers.length > maxDisplay) {
-         displayUsers.length = maxDisplay; 
+        displayUsers.length = maxDisplay;
       }
-      
-      displayUsers.forEach(user => {
-        const label = document.createElement('label');
-        label.className = 'tag-checkbox-label'; // スタイル流用
-        label.style.display = 'flex';
-        label.style.alignItems = 'center';
-        
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
+
+      displayUsers.forEach((user) => {
+        const label = document.createElement("label");
+        label.className = "tag-checkbox-label"; // スタイル流用
+        label.style.display = "flex";
+        label.style.alignItems = "center";
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
         checkbox.value = user.id;
         checkbox.dataset.name = user.name;
         // データソースからチェック状態を判定するのではなく、
@@ -1700,53 +1792,54 @@ async function openPeopleModal(todoId, propName) {
         // いや、currentPoolIds は初期値だが、ユーザーが操作した内容はどこにある？
         // チェックボックスの状態が変わったら currentPoolIds も更新すべきか？
         // あるいは renderList を呼ぶ前（検索入力時）に、現在のチェック状態を currentPoolIds にマージする？
-        
+
         // 修正案:
         // checkbox.addEventListener('change') で currentPeopleIds をリアルタイム更新するようにする。
         // そうすれば再描画されても checked 状態が維持される。
         checkbox.checked = currentPeopleIds.includes(user.id);
-        
-        checkbox.addEventListener('change', (e) => {
-           if (e.target.checked) {
-              if (!currentPeopleIds.includes(user.id)) currentPeopleIds.push(user.id);
-           } else {
-              currentPeopleIds = currentPeopleIds.filter(id => id !== user.id);
-           }
-           // チェック変更時にはリストを再描画しない（操作感を損なうため）
-           // 検索入力時にだけ再描画される
+
+        checkbox.addEventListener("change", (e) => {
+          if (e.target.checked) {
+            if (!currentPeopleIds.includes(user.id))
+              currentPeopleIds.push(user.id);
+          } else {
+            currentPeopleIds = currentPeopleIds.filter((id) => id !== user.id);
+          }
+          // チェック変更時にはリストを再描画しない（操作感を損なうため）
+          // 検索入力時にだけ再描画される
         });
-        
-        const avatar = document.createElement('span');
-        avatar.textContent = '👤 ';
-        avatar.style.marginRight = '4px';
-        
+
+        const avatar = document.createElement("span");
+        avatar.textContent = "👤 ";
+        avatar.style.marginRight = "4px";
+
         label.appendChild(checkbox);
         label.appendChild(avatar);
         label.appendChild(document.createTextNode(user.name));
         container.appendChild(label);
       });
-      
+
       if (container.children.length === 0) {
-         if (users.length === 0) {
-            container.innerHTML = `
+        if (users.length === 0) {
+          container.innerHTML = `
               <div style="padding:12px; color:#b45309; background:#fffbeb; border-radius:8px; font-size:12px; line-height:1.5;">
                 <p style="margin-bottom:8px; font-weight:bold;">⚠️ ユーザー情報がありません</p>
                 <p>設定画面を開き、右上の<br><b>「🔄 更新」ボタン</b>を押してください。</p>
               </div>`;
-         } else {
-            container.innerHTML = '<p style="color:#888; font-size:12px; padding:8px;">ユーザーが見つかりません</p>';
-         }
+        } else {
+          container.innerHTML =
+            '<p style="color:#888; font-size:12px; padding:8px;">ユーザーが見つかりません</p>';
+        }
       }
     };
-    
+
     renderList();
-    
+
     // 検索イベント
     searchInput.oninput = (e) => renderList(e.target.value);
-    
-    modal.style.display = 'flex';
+
+    modal.style.display = "flex";
     searchInput.focus();
-    
   } catch (error) {
     showError(`エラー: ${error.message}`);
   }
@@ -1755,41 +1848,45 @@ async function openPeopleModal(todoId, propName) {
 // 担当者を保存
 async function savePeople() {
   if (!editingTodoId || !editingPropName) return;
-  
-  const btn = document.getElementById('savePeopleBtn');
+
+  const btn = document.getElementById("savePeopleBtn");
   const originalText = btn.textContent;
-  btn.textContent = '保存中...';
+  btn.textContent = "保存中...";
   btn.disabled = true;
 
   try {
     // showLoading();
-    
-    const checkboxes = document.querySelectorAll('#peopleCheckboxes input[type="checkbox"]'); // これは使わず currentPeopleIds を使う
-    
-    const selectedPeople = currentPeopleIds.map(id => ({ id: id }));
-    
-    const response = await fetch(`https://api.notion.com/v1/pages/${editingTodoId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Notion-Version': '2022-06-28',
-        'Content-Type': 'application/json'
+
+    const checkboxes = document.querySelectorAll(
+      '#peopleCheckboxes input[type="checkbox"]',
+    ); // これは使わず currentPeopleIds を使う
+
+    const selectedPeople = currentPeopleIds.map((id) => ({ id: id }));
+
+    const response = await fetch(
+      `https://api.notion.com/v1/pages/${editingTodoId}`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Notion-Version": "2022-06-28",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          properties: {
+            [editingPropName]: {
+              people: selectedPeople,
+            },
+          },
+        }),
       },
-      body: JSON.stringify({
-        properties: {
-          [editingPropName]: {
-            people: selectedPeople
-          }
-        }
-      })
-    });
-    
-    if (!response.ok) throw new Error('担当者更新失敗');
-    
+    );
+
+    if (!response.ok) throw new Error("担当者更新失敗");
+
     closePeopleModal();
     await loadTodos(); // PersonもDOM更新がややこしい（アバター画像は無いが）ので一旦リロード。
     // 時間があればここもOptimistic UIにするが、まずは要望の強い日付を優先。
-    
   } catch (error) {
     showError(`エラー: ${error.message}`);
   } finally {
@@ -1799,45 +1896,54 @@ async function savePeople() {
 }
 
 function closePeopleModal() {
-  document.getElementById('peopleModal').style.display = 'none';
+  document.getElementById("peopleModal").style.display = "none";
   editingTodoId = null;
   editingPropName = null;
 }
 
 // ユーザー一覧を強制更新
 async function refreshUsers() {
-  const btn = document.getElementById('refreshPeopleBtn');
+  const btn = document.getElementById("refreshPeopleBtn");
   const originalContent = btn.innerHTML;
-  btn.innerHTML = '<div class="spinner" style="width:14px; height:14px; border-width:2px;"></div>';
+  btn.innerHTML =
+    '<div class="spinner" style="width:14px; height:14px; border-width:2px;"></div>';
   btn.disabled = true;
-  
+
   try {
-    const response = await fetch('https://api.notion.com/v1/users', {
-      method: 'GET',
+    const response = await fetch("https://api.notion.com/v1/users", {
+      method: "GET",
       headers: {
-        'Authorization': `Bearer ${config.apiKey}`,
-        'Notion-Version': '2022-06-28'
-      }
+        Authorization: `Bearer ${config.apiKey}`,
+        "Notion-Version": "2022-06-28",
+      },
     });
-    
-    if (!response.ok) throw new Error('ユーザー情報の取得に失敗しました');
+
+    if (!response.ok) throw new Error("ユーザー情報の取得に失敗しました");
     const data = await response.json();
-    const users = data.results.map(u => ({ id: u.id, name: u.name || 'Unknown' }));
-    
+    const users = data.results.map((u) => ({
+      id: u.id,
+      name: u.name || "Unknown",
+    }));
+
     // 現在のDB設定に保存
     const activeDbId = getActiveDatabaseId();
     if (activeDbId) {
-      const dbIndex = config.databases.findIndex(d => d.id.replace(/-/g, '') === activeDbId.replace(/-/g, ''));
+      const dbIndex = config.databases.findIndex(
+        (d) => d.id.replace(/-/g, "") === activeDbId.replace(/-/g, ""),
+      );
       if (dbIndex !== -1) {
         config.databases[dbIndex].users = users; // メモリ更新
-        
+
         // ストレージ保存
         await new Promise((resolve) => {
-          chrome.storage.local.set({ notionDatabases: config.databases }, resolve);
+          chrome.storage.local.set(
+            { notionDatabases: config.databases },
+            resolve,
+          );
         });
-        
+
         // UI再描画（現在の検索条件を維持しつつ）
-        const searchInput = document.getElementById('peopleSearchInput');
+        const searchInput = document.getElementById("peopleSearchInput");
         // モーダルが開いている状態なので、再描画処理が必要
         // openPeopleModal内のrenderListはローカルスコープにあるため直接呼べない。
         // なので、簡易的に現在開いているtodoIdとpropNameを使って再オープンに似た挙動をするか、
@@ -1845,13 +1951,12 @@ async function refreshUsers() {
         // ここでは一旦、モーダルを閉じずに中身を更新したいが、renderListへのアクセスがない。
         // -> openPeopleModalを再呼び出しするのが手っ取り早い。
         openPeopleModal(editingTodoId, editingPropName);
-        
+
         // 成功メッセージ（簡易的）
         searchInput.placeholder = `更新完了: ${users.length}名`;
-        setTimeout(() => searchInput.placeholder = 'ユーザーを検索...', 2000);
+        setTimeout(() => (searchInput.placeholder = "ユーザーを検索..."), 2000);
       }
     }
-    
   } catch (error) {
     showError(`更新失敗: ${error.message}`);
   } finally {
@@ -1859,7 +1964,6 @@ async function refreshUsers() {
     btn.disabled = false;
   }
 }
-
 
 // イベントリスナー
 elements.refreshBtn.addEventListener("click", loadTodos);
@@ -1877,55 +1981,74 @@ elements.newTaskInput.addEventListener("keypress", (e) => {
 });
 
 // 期日モーダルのイベントリスナー
-document.getElementById('saveDueDateBtn').addEventListener('click', saveDueDate);
-document.getElementById('removeDueDateBtn').addEventListener('click', removeDueDate);
-document.getElementById('cancelDueDateBtn').addEventListener('click', closeDueDateModal);
+document
+  .getElementById("saveDueDateBtn")
+  .addEventListener("click", saveDueDate);
+document
+  .getElementById("removeDueDateBtn")
+  .addEventListener("click", removeDueDate);
+document
+  .getElementById("cancelDueDateBtn")
+  .addEventListener("click", closeDueDateModal);
 
 // タグモーダルのイベントリスナー
-document.getElementById('saveTagBtn').addEventListener('click', saveTags);
-document.getElementById('cancelTagBtn').addEventListener('click', closeTagModal);
+document.getElementById("saveTagBtn").addEventListener("click", saveTags);
+document
+  .getElementById("cancelTagBtn")
+  .addEventListener("click", closeTagModal);
 
 // モーダル背景クリックで閉じる
-document.getElementById('dueDateModal').addEventListener('click', (e) => {
-  if (e.target.id === 'dueDateModal') closeDueDateModal();
+document.getElementById("dueDateModal").addEventListener("click", (e) => {
+  if (e.target.id === "dueDateModal") closeDueDateModal();
 });
-document.getElementById('tagModal').addEventListener('click', (e) => {
-  if (e.target.id === 'tagModal') closeTagModal();
+document.getElementById("tagModal").addEventListener("click", (e) => {
+  if (e.target.id === "tagModal") closeTagModal();
 });
-const peopleModal = document.getElementById('peopleModal');
-peopleModal.addEventListener('click', (e) => {
-  if (e.target.id === 'peopleModal') closePeopleModal();
+const peopleModal = document.getElementById("peopleModal");
+peopleModal.addEventListener("click", (e) => {
+  if (e.target.id === "peopleModal") closePeopleModal();
 });
 
 // People Modal イベントリスナー
-document.getElementById('savePeopleBtn').addEventListener('click', savePeople);
-document.getElementById('cancelPeopleBtn').addEventListener('click', closePeopleModal);
-document.getElementById('refreshPeopleBtn').addEventListener('click', refreshUsers);
-
-
+document.getElementById("savePeopleBtn").addEventListener("click", savePeople);
+document
+  .getElementById("cancelPeopleBtn")
+  .addEventListener("click", closePeopleModal);
+document
+  .getElementById("refreshPeopleBtn")
+  .addEventListener("click", refreshUsers);
 
 // Notion API用のフィルターオブジェクトを構築
 function buildNotionFilter(db) {
   if (!db.filters || db.filters.length === 0) return undefined;
-  
-  const conditions = db.filters.map(f => {
-    if (f.type === 'status') return { property: f.property, status: { equals: f.value } };
-    if (f.type === 'select') return { property: f.property, select: { equals: f.value } };
-    if (f.type === 'multi_select') return { property: f.property, multi_select: { contains: f.value } };
-    if (f.type === 'checkbox') return { property: f.property, checkbox: { equals: f.value.toLowerCase() === 'true' } };
-    if (f.type === 'people') {
-      if (f.value === '__empty__') {
-        return { property: f.property, people: { is_empty: true } };
+
+  const conditions = db.filters
+    .map((f) => {
+      if (f.type === "status")
+        return { property: f.property, status: { equals: f.value } };
+      if (f.type === "select")
+        return { property: f.property, select: { equals: f.value } };
+      if (f.type === "multi_select")
+        return { property: f.property, multi_select: { contains: f.value } };
+      if (f.type === "checkbox")
+        return {
+          property: f.property,
+          checkbox: { equals: f.value.toLowerCase() === "true" },
+        };
+      if (f.type === "people") {
+        if (f.value === "__empty__") {
+          return { property: f.property, people: { is_empty: true } };
+        }
+        return { property: f.property, people: { contains: f.value } };
       }
-      return { property: f.property, people: { contains: f.value } };
-    }
-    return null;
-  }).filter(c => c !== null);
-  
+      return null;
+    })
+    .filter((c) => c !== null);
+
   if (conditions.length === 0) return undefined;
   if (conditions.length === 1) return conditions[0];
-  
-  if (db.filterOperator === 'or') {
+
+  if (db.filterOperator === "or") {
     return { or: conditions };
   }
   return { and: conditions };
@@ -1933,7 +2056,7 @@ function buildNotionFilter(db) {
 
 // ストレージの変更を監視して設定を自動更新
 chrome.storage.onChanged.addListener((changes, namespace) => {
-  if (namespace === 'local') {
+  if (namespace === "local") {
     if (changes.notionApiKey) {
       config.apiKey = changes.notionApiKey.newValue;
     }
@@ -1947,149 +2070,330 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
   }
 });
 
-
 // Googleカレンダーにタスクを追加
 function addToGoogleCalendar(todo) {
   try {
     const title = getTodoTitle(todo);
     const dueDate = getTodoDueDate(todo);
-    
+
     const params = new URLSearchParams();
-    params.append('action', 'TEMPLATE');
-    params.append('text', title);
-    
+    params.append("action", "TEMPLATE");
+    params.append("text", title);
+
     if (dueDate) {
       // 期日の9:00-9:30に設定 (Notionの形式がYYYY-MM-DDであることを想定し、ハイフンを除去)
       // 日時込み(YYYY-MM-DDTHH:mm...)の場合も考慮して先頭10文字を取得
-      const dateStr = dueDate.substring(0, 10).replace(/-/g, '');
-      const startDateTime = dateStr + 'T090000';
-      const endDateTime = dateStr + 'T093000';
-      params.append('dates', startDateTime + '/' + endDateTime);
+      const dateStr = dueDate.substring(0, 10).replace(/-/g, "");
+      const startDateTime = dateStr + "T090000";
+      const endDateTime = dateStr + "T093000";
+      params.append("dates", startDateTime + "/" + endDateTime);
     } else {
       // 期日がない場合は今日の9:00-9:30
       const today = new Date();
       const year = today.getFullYear();
-      const month = String(today.getMonth() + 1).padStart(2, '0');
-      const day = String(today.getDate()).padStart(2, '0');
+      const month = String(today.getMonth() + 1).padStart(2, "0");
+      const day = String(today.getDate()).padStart(2, "0");
       const dateStr = year + month + day;
-      params.append('dates', dateStr + 'T090000/' + dateStr + 'T093000');
+      params.append("dates", dateStr + "T090000/" + dateStr + "T093000");
     }
-    
+
     if (todo.url) {
-      params.append('details', 'Notion: ' + todo.url);
+      params.append("details", "Notion: " + todo.url);
     }
-    
-    const calendarUrl = 'https://calendar.google.com/calendar/render?' + params.toString(); 
+
+    const calendarUrl =
+      "https://calendar.google.com/calendar/render?" + params.toString();
     chrome.tabs.create({ url: calendarUrl });
-    
   } catch (error) {
-    console.error('Googleカレンダー追加エラー:', error);
-    showError('Googleカレンダーへの追加に失敗しました: ' + error.message);
+    console.error("Googleカレンダー追加エラー:", error);
+    showError("Googleカレンダーへの追加に失敗しました: " + error.message);
   }
 }
 
 // ダークモード切り替え
 function initTheme() {
   // 保存されたテーマを読み込む
-  chrome.storage.local.get(['theme'], (result) => {
+  chrome.storage.local.get(["theme"], (result) => {
     const savedTheme = result.theme;
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const theme = savedTheme || (prefersDark ? 'dark' : 'light');
-    
-    document.documentElement.setAttribute('data-theme', theme);
+    const prefersDark = window.matchMedia(
+      "(prefers-color-scheme: dark)",
+    ).matches;
+    const theme = savedTheme || (prefersDark ? "dark" : "light");
+
+    document.documentElement.setAttribute("data-theme", theme);
     updateThemeIcon(theme);
   });
 }
 
 function toggleTheme() {
-  const currentTheme = document.documentElement.getAttribute('data-theme');
-  const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-  
-  document.documentElement.setAttribute('data-theme', newTheme);
+  const currentTheme = document.documentElement.getAttribute("data-theme");
+  const newTheme = currentTheme === "dark" ? "light" : "dark";
+
+  document.documentElement.setAttribute("data-theme", newTheme);
   chrome.storage.local.set({ theme: newTheme });
   updateThemeIcon(newTheme);
 }
 
 function updateThemeIcon(theme) {
-  const themeToggle = document.getElementById('themeToggle');
+  const themeToggle = document.getElementById("themeToggle");
   if (!themeToggle) return;
-  
-  if (theme === 'dark') {
+
+  if (theme === "dark") {
     // 太陽アイコン(ライトモードに切り替え)
-    themeToggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
+    themeToggle.innerHTML =
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
   } else {
     // 月アイコン(ダークモードに切り替え)
-    themeToggle.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+    themeToggle.innerHTML =
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
   }
 }
 
 // テーマ切り替えボタンのイベントリスナー
-document.getElementById('themeToggle')?.addEventListener('click', toggleTheme);
+document.getElementById("themeToggle")?.addEventListener("click", toggleTheme);
 
 // システムテーマ変更の監視
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-  chrome.storage.local.get(['theme'], (result) => {
-    if (!result.theme) {
-      const theme = e.matches ? 'dark' : 'light';
-      document.documentElement.setAttribute('data-theme', theme);
-      updateThemeIcon(theme);
-    }
+window
+  .matchMedia("(prefers-color-scheme: dark)")
+  .addEventListener("change", (e) => {
+    chrome.storage.local.get(["theme"], (result) => {
+      if (!result.theme) {
+        const theme = e.matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", theme);
+        updateThemeIcon(theme);
+      }
+    });
   });
-});
 
+// 並び替えトグル機能
+function toggleSort() {
+  isDateSortEnabled = !isDateSortEnabled;
+  chrome.storage.local.set({ isDateSortEnabled });
+  updateSortButtonIcon();
 
+  // 再読み込みして並び替えを適用
+  showLoading();
+  // 少し遅延させて「切り替わった感」を出す
+  setTimeout(() => {
+    // 既存のtodosを再ソートして再描画（APIリクエスト節約）
+    if (todos.length > 0) {
+      // 再帰的な構造を一度フラットにするのは手間なので、loadTodosを呼ぶのが一番安全
+      loadTodos();
+    } else {
+      loadTodos();
+    }
+  }, 200);
+}
 
+function updateSortButtonIcon() {
+  const btn = document.getElementById("sortToggleBtn");
+  const icon = document.getElementById("sortIcon");
+  if (!btn || !icon) return;
 
+  if (isDateSortEnabled) {
+    icon.textContent = "📅"; // 日付順
+    btn.title = "日付順 (クリックで作成順に切り替え)";
+    btn.style.opacity = "1";
+  } else {
+    icon.textContent = "📝"; // 作成順 (マニュアル)
+    btn.title = "作成順 (クリックで日付順に切り替え)";
+    btn.style.opacity = "0.7";
+  }
+}
 
-
+document.getElementById("sortToggleBtn")?.addEventListener("click", toggleSort);
 
 // ドラッグ&ドロップ機能
 let draggedElement = null;
 
 function makeTodoDraggable(todoElement) {
   todoElement.draggable = true;
-  
-  todoElement.addEventListener('dragstart', (e) => {
+
+  todoElement.addEventListener("dragstart", (e) => {
     draggedElement = todoElement;
-    todoElement.classList.add('dragging');
-    e.dataTransfer.effectAllowed = 'move';
+    todoElement.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
   });
-  
-  todoElement.addEventListener('dragend', (e) => {
-    todoElement.classList.remove('dragging');
+
+  todoElement.addEventListener("dragend", (e) => {
+    todoElement.classList.remove("dragging");
     draggedElement = null;
   });
-  
-  todoElement.addEventListener('dragover', (e) => {
+
+  todoElement.addEventListener("dragover", (e) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    
-    const afterElement = getDragAfterElement(todoElement.parentElement, e.clientY);
+    e.dataTransfer.dropEffect = "move";
+
+    const afterElement = getDragAfterElement(
+      todoElement.parentElement,
+      e.clientY,
+    );
     if (afterElement == null) {
       todoElement.parentElement.appendChild(draggedElement);
     } else {
       todoElement.parentElement.insertBefore(draggedElement, afterElement);
     }
+
+    // 子要素も一緒に移動させる
+    const todoId = draggedElement.dataset.id;
+    if (todoId) {
+      // この要素を親として持つすべての要素を取得
+      const children = [
+        ...document.querySelectorAll(`.todo-item[data-parent-id="${todoId}"]`),
+      ];
+      if (children.length > 0) {
+        // 親要素の直後に順番に配置
+        let lastElement = draggedElement;
+        children.forEach((child) => {
+          lastElement.after(child);
+          lastElement = child;
+        });
+      }
+    }
+
+    // 手動モードなら順序を保存
+    if (!isDateSortEnabled) {
+      saveManualOrder();
+    }
   });
 }
 
-function getDragAfterElement(container, y) {
-  const draggableElements = [...container.querySelectorAll('.todo-item:not(.dragging)')];
-  
-  return draggableElements.reduce((closest, child) => {
-    const box = child.getBoundingClientRect();
-    const offset = y - box.top - box.height / 2;
-    
-    if (offset < 0 && offset > closest.offset) {
-      return { offset: offset, element: child };
-    } else {
-      return closest;
+// 手動順序を保存する関数
+function saveManualOrder() {
+  const currentOrder = [];
+  document.querySelectorAll(".todo-item").forEach((el) => {
+    if (el.dataset.id) {
+      currentOrder.push(el.dataset.id);
     }
-  }, { offset: Number.NEGATIVE_INFINITY }).element;
+  });
+  manualOrder = currentOrder;
+  chrome.storage.local.set({ manualOrder });
+}
+
+// 階層構造を考慮してソートする関数
+function sortTodosByHierarchy(todos) {
+  // 1. まず標準の比較関数を定義
+  const compare = (a, b) => {
+    const aDone = getTodoStatus(a);
+    const bDone = getTodoStatus(b);
+
+    // 1. 完了状態でソート (未完了が先) - これは常に有効にする
+    if (aDone !== bDone) return aDone ? 1 : -1;
+
+    // 日付順ソートが有効な場合
+    if (isDateSortEnabled) {
+      // 2. 期限でソート (近い順)
+      const aDate = getTodoDueDate(a);
+      const bDate = getTodoDueDate(b);
+
+      if (aDate && bDate) return new Date(aDate) - new Date(bDate);
+      if (aDate) return -1;
+      if (bDate) return 1;
+
+      // 3. 作成日時でソート (新しい順) - デフォルトまたは「マニュアル(作成順)」モード
+      return new Date(b.created_time) - new Date(a.created_time);
+    } else {
+      // 手動モード (キャッシュされた順序を使用)
+      const indexA = manualOrder.indexOf(a.id);
+      const indexB = manualOrder.indexOf(b.id);
+
+      // 両方とも順序リストにある場合
+      if (indexA !== -1 && indexB !== -1) {
+        return indexA - indexB;
+      }
+
+      // 片方だけある場合 (リストにある方を下に -> 未ソートの新着タスクを上に表示)
+      if (indexA !== -1) return 1;
+      if (indexB !== -1) return -1;
+
+      // 両方ない場合 (作成日時で新しい順 = 上に来る)
+      return new Date(b.created_time) - new Date(a.created_time);
+    }
+  };
+
+  // 2. IDマップと親子関係マップを作成
+  const todoMap = new Map();
+  const childrenMap = new Map(); // parentId -> [childTodos]
+
+  todos.forEach((todo) => {
+    todoMap.set(todo.id, todo);
+  });
+
+  const roots = [];
+
+  todos.forEach((todo) => {
+    const parentId = getParentId(todo);
+    // 親が存在し、かつその親が現在のリストに含まれている場合 -> 子
+    if (parentId && todoMap.has(parentId)) {
+      if (!childrenMap.has(parentId)) {
+        childrenMap.set(parentId, []);
+      }
+      childrenMap.get(parentId).push(todo);
+    } else {
+      // 親がいない、または親がリストにない -> ルート扱い
+      roots.push(todo);
+    }
+  });
+
+  // 3. 再帰的にリストを構築
+  const buildList = (nodes) => {
+    // ノード自身をソート
+    nodes.sort(compare);
+
+    let result = [];
+    nodes.forEach((node) => {
+      // 子がいるかチェックしてフラグを立てる
+      if (childrenMap.has(node.id)) {
+        node.hasChildren = true;
+      }
+
+      result.push(node);
+      // 子がいればそれらもソートして追加
+      if (childrenMap.has(node.id)) {
+        const children = childrenMap.get(node.id);
+        result = result.concat(buildList(children));
+      }
+    });
+    return result;
+  };
+
+  return buildList(roots);
+}
+
+// 親IDを取得するヘルパー
+function getParentId(todo) {
+  for (const [propName, prop] of Object.entries(todo.properties)) {
+    if (prop.type === "relation" && prop.relation && prop.relation.length > 0) {
+      const lowerName = propName.toLowerCase();
+      if (lowerName.includes("parent") || lowerName.includes("親")) {
+        return prop.relation[0].id; // 最初の親IDを返す
+      }
+    }
+  }
+  return null;
+}
+
+function getDragAfterElement(container, y) {
+  const draggableElements = [
+    ...container.querySelectorAll(".todo-item:not(.dragging)"),
+  ];
+
+  return draggableElements.reduce(
+    (closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    },
+    { offset: Number.NEGATIVE_INFINITY },
+  ).element;
 }
 
 // テーマ初期化
 initTheme();
 // 初期化実行
 init();
-

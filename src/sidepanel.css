@@ -74,6 +74,7 @@
   background: #374151;
   color: #f9fafb;
 }
+
 * {
   margin: 0;
   padding: 0;
@@ -93,6 +94,7 @@
   display: inline-block;
   vertical-align: middle;
 }
+
 .add-prop-btn:hover {
   background: #e5e7eb;
   color: #6b7280;
@@ -106,17 +108,19 @@
   justify-content: space-between;
   gap: 12px;
   background: #ffffff;
-  border: 2px solid #475569; /* 非常に濃いグレー（Slate-600） */
+  border: 2px solid #475569;
+  /* 非常に濃いグレー（Slate-600） */
   border-radius: 10px;
   padding: 12px;
   margin-bottom: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: all 0.2s ease;
 }
 
 .todo-item:hover {
-  border-color: #1e293b; /* ホバー時はほぼ黒（Slate-800） */
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  border-color: #1e293b;
+  /* ホバー時はほぼ黒（Slate-800） */
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   transform: translateY(-1px);
 }
 
@@ -358,6 +362,7 @@ header h1 {
     opacity: 0;
     transform: translateY(8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -372,16 +377,23 @@ header h1 {
 
 /* サブアイテム（親子関係） */
 .todo-item.sub-item {
-  margin-left: 20px;
-  border-left: 3px solid var(--primary-light);
+  margin-left: 24px;
+  /* インデントを少し広げる */
+  margin-top: -8px;
+  /* 上のマージンを詰めて親カードとの一体感を出す */
+  border-left: none;
+  /* ボーダー左線は削除 */
   background: var(--bg-soft);
+  /* 親カードより少し薄い、または異なる背景色 */
+  border-top-left-radius: 4px;
+  /* 角丸調整 */
+  border-top-right-radius: 4px;
+  position: relative;
+  /* 重なり順調整用 */
+  z-index: 0;
 }
 
-.sub-item-icon {
-  color: var(--text-muted);
-  font-weight: bold;
-  margin-right: 4px;
-}
+
 
 .parent-info {
   display: block;
@@ -593,6 +605,7 @@ footer {
     opacity: 0;
     transform: translateY(-20px) scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -725,10 +738,12 @@ footer {
   color: #065f46;
   border-radius: 8px;
   margin-bottom: 16px;
-  font-size: 13px; /* Fixed syntax error here */
+  font-size: 13px;
+  /* Fixed syntax error here */
   display: none;
   animation: slideIn 0.3s ease-out;
 }
+
 /* DBコントロール */
 .db-controls {
   display: flex;
@@ -782,15 +797,15 @@ footer {
   background-color: white;
   border-radius: 50%;
   transition: 0.3s;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
-.toggle-switch input:checked + .slider {
+.toggle-switch input:checked+.slider {
   background-color: var(--accent);
-  border-color: rgba(255,255,255,0.5);
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
-.toggle-switch input:checked + .slider:before {
+.toggle-switch input:checked+.slider:before {
   transform: translateX(16px);
 }
 
@@ -799,7 +814,7 @@ footer {
   font-weight: 700;
   color: white;
   white-space: nowrap;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 /* タスクアクションボタン (修復) */
@@ -978,6 +993,7 @@ footer {
     opacity: 0;
     transform: scale(0.9);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -1005,6 +1021,7 @@ footer {
   font-weight: 500;
   color: #374151;
 }
+
 /* Googleカレンダーボタン */
 .calendar-btn {
   background: #f3f4f6;
@@ -1054,6 +1071,7 @@ footer {
 .todo-item {
   min-height: 90px;
 }
+
 .calendar-btn img {
   width: 20px;
   height: 20px;
@@ -1080,4 +1098,32 @@ footer {
   border-top: 3px solid var(--primary);
 }
 
+/* トグルボタン（サブアイテム展開/折りたたみ） */
+.toggle-sub-items {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 10px;
+  transition: all 0.2s ease;
+  user-select: none;
+  flex-shrink: 0;
+  /* 縮まないようにする */
+}
 
+.toggle-sub-items:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-main);
+}
+
+.todo-main-row {
+  display: flex;
+  align-items: flex-start;
+  /* 複数行対応のため上揃え */
+  width: 100%;
+}
