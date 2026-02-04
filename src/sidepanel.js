@@ -1157,7 +1157,12 @@ function openDueDateModal(todoId, currentDate, propName) {
   if (currentDate) {
     input.value = currentDate;
   } else {
-    input.value = '';
+    // 今日をデフォルトに
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    input.value = `${year}-${month}-${day}`;
   }
   
   modal.style.display = 'flex';
@@ -1877,9 +1882,11 @@ function addToGoogleCalendar(todo) {
     params.append('text', title);
     
     if (dueDate) {
-      // 期日の9:00-9:30に設定
-      const startDateTime = dueDate + 'T090000';
-      const endDateTime = dueDate + 'T093000';
+      // 期日の9:00-9:30に設定 (Notionの形式がYYYY-MM-DDであることを想定し、ハイフンを除去)
+      // 日時込み(YYYY-MM-DDTHH:mm...)の場合も考慮して先頭10文字を取得
+      const dateStr = dueDate.substring(0, 10).replace(/-/g, '');
+      const startDateTime = dateStr + 'T090000';
+      const endDateTime = dateStr + 'T093000';
       params.append('dates', startDateTime + '/' + endDateTime);
     } else {
       // 期日がない場合は今日の9:00-9:30
